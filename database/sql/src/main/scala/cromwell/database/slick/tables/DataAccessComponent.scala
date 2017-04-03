@@ -15,7 +15,8 @@ class DataAccessComponent(val driver: JdbcProfile)
     with SummaryStatusEntryComponent
     with WorkflowMetadataSummaryEntryComponent
     with WorkflowStoreEntryComponent
-    with SubWorkflowStoreEntryComponent {
+    with SubWorkflowStoreEntryComponent
+    with DockerHashStoreEntryComponent {
 
   import driver.api._
 
