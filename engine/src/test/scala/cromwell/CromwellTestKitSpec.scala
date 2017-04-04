@@ -11,10 +11,10 @@ import com.typesafe.config.{Config, ConfigFactory}
 import cromwell.CromwellTestKitSpec._
 import cromwell.backend._
 import cromwell.core._
-import cromwell.docker.DockerHashActor.DockerHashResponseSuccess
-import cromwell.docker.{DockerHashRequest, DockerHashResult}
 import cromwell.core.path.BetterFileMethods.Cmds
 import cromwell.core.path.DefaultPathBuilder
+import cromwell.docker.DockerHashActor.DockerHashSuccessResponse
+import cromwell.docker.{DockerHashRequest, DockerHashResult}
 import cromwell.engine.backend.BackendConfigurationEntry
 import cromwell.engine.workflow.WorkflowManagerActor.RetrieveNewWorkflows
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCacheReadActor.{CacheLookupRequest, CacheResultMatchesForHashes}
@@ -33,9 +33,9 @@ import cromwell.util.SampleWdl
 import cromwell.webservice.PerRequest.RequestComplete
 import cromwell.webservice.metadata.MetadataBuilderActor
 import org.scalactic.Equality
+import org.scalatest._
 import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Millis, Seconds, Span}
-import org.scalatest._
 import spray.http.StatusCode
 import spray.json._
 import wdl4s.TaskCall
@@ -497,7 +497,7 @@ object EmptyCallCacheWriteActor {
 
 class EmptyDockerHashActor extends Actor {
   override def receive: Receive = {
-    case request @ DockerHashRequest(image, _) => sender ! DockerHashResponseSuccess(DockerHashResult("alg", "hash"), request)
+    case request @ DockerHashRequest(image, _) => sender ! DockerHashSuccessResponse(DockerHashResult("alg", "hash"), request)
   }
 }
 
