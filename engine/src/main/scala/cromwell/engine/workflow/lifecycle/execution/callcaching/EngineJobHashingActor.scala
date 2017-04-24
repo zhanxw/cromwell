@@ -41,7 +41,7 @@ class EngineJobHashingActor(receiver: ActorRef,
       findCacheResults(newHashResults, data)
       updateStateDataWithNewHashResultsAndTransition(newHashResults)
     case Event(newCacheResults: CacheResultMatchesForHashes, _) =>
-      ev = ev :+ ExecutionEvent("Waiting for file Ids")
+      ev = ev :+ ExecutionEvent("Waiting for file hashes")
       val newData = stateData.intersectCacheResults(newCacheResults)
       if (newData.isDefinitelyCacheHitOrMiss) {
         respondWithHitOrMissThenTransition(newData)
