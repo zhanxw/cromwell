@@ -71,19 +71,19 @@ trait CallCachingHashEntryComponent {
     * @return The callCachingEntryIds with all of the hash keys and hash values.
     */
   def callCachingEntryIdsForHashKeyHashValues(hashKeyHashValues: NonEmptyList[(String, String)]) = {
-    for {
+    (for {
       callCachingEntry <- callCachingEntries
       if existsAllCallCachingEntryIdHashKeyHashValues(
         callCachingEntry.callCachingEntryId, hashKeyHashValues) && callCachingEntry.allowResultReuse
-    } yield callCachingEntry.callCachingEntryId
+    } yield callCachingEntry.callCachingEntryId).take(1)
   }
 
   def callCachingEntryIdsForHashKeyHashValuesAndCacheIds(hashKeyHashValues: NonEmptyList[(String, String)], possibleHits: Set[Int]) = {
-    for {
+    (for {
       callCachingEntry <- callCachingEntries
       if callCachingEntry.callCachingEntryId inSet possibleHits
       if existsAllCallCachingEntryIdHashKeyHashValues(
         callCachingEntry.callCachingEntryId, hashKeyHashValues) && callCachingEntry.allowResultReuse
-    } yield callCachingEntry.callCachingEntryId
+    } yield callCachingEntry.callCachingEntryId).take(1)
   }
 }
