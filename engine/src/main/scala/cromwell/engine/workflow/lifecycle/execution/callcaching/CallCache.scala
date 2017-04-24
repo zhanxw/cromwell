@@ -64,15 +64,15 @@ class CallCache(database: CallCachingSqlDatabase) {
     database.addCallCaching(callCachingJoin)
   }
 
-  def callCachingEntryIdsMatchingHashes(callCacheHashes: CallCacheHashes)(implicit ec: ExecutionContext): Future[Set[CallCachingEntryId]] = {
-    callCachingEntryIdsMatchingHashes(NonEmptyList.fromListUnsafe(callCacheHashes.hashes.toList))
+  def callCachingEntryIdsMatchingHashes(callCacheHashes: CallCacheHashes, possibleHits: Option[Set[CallCachingEntryId]])(implicit ec: ExecutionContext): Future[Set[CallCachingEntryId]] = {
+    callCachingEntryIdsMatchingHashes(NonEmptyList.fromListUnsafe(callCacheHashes.hashes.toList), possibleHits)
   }
 
-  private def callCachingEntryIdsMatchingHashes(hashKeyValuePairs: NonEmptyList[HashResult])
+  private def callCachingEntryIdsMatchingHashes(hashKeyValuePairs: NonEmptyList[HashResult], possibleHits: Option[Set[CallCachingEntryId]])
                                        (implicit ec: ExecutionContext): Future[Set[CallCachingEntryId]] = {
     val result = database.queryCallCachingEntryIds(hashKeyValuePairs map {
       case HashResult(hashKey, hashValue) => (hashKey.key, hashValue.value)
-    })
+    }, possibleHits map { _ map { _.id } })
 
     result.map(_.toSet.map(CallCachingEntryId))
   }

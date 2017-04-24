@@ -22,8 +22,8 @@ class CallCacheReadActor(cache: CallCache) extends Actor with ActorLogging {
   private var currentRequester: Option[ActorRef] = None
 
   override def receive: Receive = {
-    case CacheLookupRequest(callCacheHashes) =>
-      receiveNewRequest(callCacheHashes)
+    case request: CacheLookupRequest =>
+      receiveNewRequest(request)
     case r: CallCacheReadActorResponse =>
       currentRequester foreach { _ ! r }
       cycleRequestQueue()
@@ -31,9 +31,9 @@ class CallCacheReadActor(cache: CallCache) extends Actor with ActorLogging {
       log.error("Unexpected message type to CallCacheReadActor: " + other.getClass.getSimpleName)
   }
 
-  private def runRequest(callCacheHashes: CallCacheHashes): Unit = {
-    val response = cache.callCachingEntryIdsMatchingHashes(callCacheHashes) map {
-      CacheResultMatchesForHashes(callCacheHashes.hashes, _)
+  private def runRequest(request: CacheLookupRequest): Unit = {
+    val response = cache.callCachingEntryIdsMatchingHashes(request.callCacheHashes, request.possibleHits) map {
+      CacheResultMatchesForHashes(request.callCacheHashes.hashes, _)
     } recover {
       case t => CacheResultLookupFailure(t)
     }
@@ -51,20 +51,20 @@ class CallCacheReadActor(cache: CallCache) extends Actor with ActorLogging {
       currentRequester = None
   }
 
-  private def receiveNewRequest(callCacheHashes: CallCacheHashes): Unit = currentRequester match {
-    case Some(x) => requestQueue :+= RequestTuple(sender, callCacheHashes)
+  private def receiveNewRequest(request: CacheLookupRequest): Unit = currentRequester match {
+    case Some(x) => requestQueue :+= RequestTuple(sender, request)
     case None =>
       currentRequester = Option(sender)
-      runRequest(callCacheHashes)
+      runRequest(request)
   }
 }
 
 object CallCacheReadActor {
   def props(callCache: CallCache): Props = Props(new CallCacheReadActor(callCache)).withDispatcher(EngineDispatcher)
 
-  private[CallCacheReadActor] case class RequestTuple(requester: ActorRef, hashes: CallCacheHashes)
+  private[CallCacheReadActor] case class RequestTuple(requester: ActorRef, request: CacheLookupRequest)
 
-  case class CacheLookupRequest(callCacheHashes: CallCacheHashes)
+  case class CacheLookupRequest(callCacheHashes: CallCacheHashes, possibleHits: Option[Set[CallCachingEntryId]])
 
   sealed trait CallCacheReadActorResponse
   case class CacheResultMatchesForHashes(hashResults: Set[HashResult], cacheResultIds: Set[CallCachingEntryId]) extends CallCacheReadActorResponse

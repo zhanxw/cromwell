@@ -29,12 +29,29 @@ class EngineJobHashingActor(receiver: ActorRef,
   
   initializeEJHA()
 
+  when(WaitingForInitialCacheIds) {
+    case Event(hashResultMessage: EJHAInitialHashingResults, data) =>
+      val newHashResults = hashResultMessage.hashes
+      findCacheResults(newHashResults, data)
+      updateStateDataWithNewHashResultsAndTransition(newHashResults)
+    case Event(newCacheResults: CacheResultMatchesForHashes, _) =>
+      val newData = stateData.intersectCacheResults(newCacheResults)
+      if (newData.isDefinitelyCacheHitOrMiss) {
+        respondWithHitOrMissThenTransition(newData)
+      } else {
+        findCacheResults(newData.hashesKnown.diff(newCacheResults.hashResults), newData)
+        goto(DeterminingHitOrMiss) using newData
+      }
+    case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
+      stay() using data.withNewKnownHashes(hashResultMessage.hashes)
+  }
+  
   when(DeterminingHitOrMiss) {
-    case Event(hashResultMessage: SuccessfulHashResultMessage, _) =>
+    case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
       // This is in DeterminingHitOrMiss, so use the new hash results to search for cache results.
       // Also update the state data with these new hash results.
       val newHashResults = hashResultMessage.hashes
-      findCacheResults(newHashResults)
+      findCacheResults(newHashResults, data)
       updateStateDataWithNewHashResultsAndTransition(newHashResults)
     case Event(newCacheResults: CacheResultMatchesForHashes, _) =>
       checkWhetherHitOrMissIsKnownThenTransition(stateData.intersectCacheResults(newCacheResults))
@@ -96,7 +113,7 @@ class EngineJobHashingActor(receiver: ActorRef,
 
     val hashesNeeded: Set[HashKey] = initialHashes.map(_.hashKey) ++ fileContentHashesNeeded.map(_.hashKey)
 
-    val initialState = if (activity.readFromCache) DeterminingHitOrMiss else GeneratingAllHashes
+    val initialState = if (activity.readFromCache) WaitingForInitialCacheIds else GeneratingAllHashes
     val initialData = EJHAData(hashesNeeded, activity)
 
     startWith(initialState, initialData)
@@ -163,14 +180,14 @@ class EngineJobHashingActor(receiver: ActorRef,
   /**
     * Needs to convert a hash result into the set of CachedResults which are consistent with it
     */
-  private def findCacheResults(hashResults: Set[HashResult]) = {
+  private def findCacheResults(hashResults: Set[HashResult], data: EJHAData) = {
     val filtered = hashResults.filter(_.hashKey.checkForHitOrMiss)
 
     if (filtered.nonEmpty) {
       val hashes = CallCacheHashes(filtered)
       val subsets = hashes.hashes.grouped(100)
       subsets foreach { subset =>
-        callCacheReadActor ! CacheLookupRequest(CallCacheHashes(subset))
+        callCacheReadActor ! CacheLookupRequest(CallCacheHashes(subset), data.possibleCacheResults)
       }
     } else ()
   }
@@ -213,6 +230,7 @@ object EngineJobHashingActor {
   private[callcaching] case object CheckWhetherAllHashesAreKnown
 
   sealed trait EJHAState
+  case object WaitingForInitialCacheIds extends EJHAState
   case object DeterminingHitOrMiss extends EJHAState
   case object GeneratingAllHashes extends EJHAState
 

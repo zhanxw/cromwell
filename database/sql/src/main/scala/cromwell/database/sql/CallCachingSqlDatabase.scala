@@ -9,7 +9,7 @@ import scala.concurrent.{ExecutionContext, Future}
 trait CallCachingSqlDatabase {
   def addCallCaching(callCachingJoin: CallCachingJoin)(implicit ec: ExecutionContext): Future[Unit]
 
-  def queryCallCachingEntryIds(hashKeyHashValues: NonEmptyList[(String, String)])
+  def queryCallCachingEntryIds(hashKeyHashValues: NonEmptyList[(String, String)], possibleHits: Option[Set[Int]])
                               (implicit ec: ExecutionContext): Future[Seq[Int]]
 
   def queryCallCaching(callCachingEntryId: Int)

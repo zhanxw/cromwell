@@ -26,9 +26,12 @@ trait CallCachingSlickDatabase extends CallCachingSqlDatabase {
     runTransaction(action)
   }
 
-  override def queryCallCachingEntryIds(hashKeyHashValues: NonEmptyList[(String, String)])
+  override def queryCallCachingEntryIds(hashKeyHashValues: NonEmptyList[(String, String)], possibleHits: Option[Set[Int]])
                                (implicit ec: ExecutionContext): Future[Seq[Int]] = {
-    val action = dataAccess.callCachingEntryIdsForHashKeyHashValues(hashKeyHashValues).result
+    val action = possibleHits match {
+      case Some(possibleHitIds) => dataAccess.callCachingEntryIdsForHashKeyHashValuesAndCacheIds(hashKeyHashValues, possibleHitIds).result
+      case None => dataAccess.callCachingEntryIdsForHashKeyHashValues(hashKeyHashValues).result
+    }
 
     runTransaction(action)
   }

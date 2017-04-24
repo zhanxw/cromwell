@@ -475,7 +475,7 @@ object AlwaysHappyJobStoreActor {
 
 class EmptyCallCacheReadActor extends Actor {
   override def receive: Receive = {
-    case CacheLookupRequest(CallCacheHashes(hashes)) => sender ! CacheResultMatchesForHashes(hashes, Set.empty)
+    case CacheLookupRequest(CallCacheHashes(hashes), None) => sender ! CacheResultMatchesForHashes(hashes, Set.empty)
   }
 }
 
