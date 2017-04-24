@@ -50,13 +50,13 @@ class EngineJobHashingActor(receiver: ActorRef,
         goto(DeterminingHitOrMiss) using newData
       }
     case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
-      ev = ev :+ ExecutionEvent("Got file hash")
+      ev = ev :+ ExecutionEvent("Got file hash but still waiting for initial hash Ids")
       stay() using data.withNewKnownHashes(hashResultMessage.hashes)
   }
   
   when(DeterminingHitOrMiss) {
     case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
-      ev = ev :+ ExecutionEvent("Still waiting for file Ids")
+      ev = ev :+ ExecutionEvent("Got file hash - waiting for file Ids")
       // This is in DeterminingHitOrMiss, so use the new hash results to search for cache results.
       // Also update the state data with these new hash results.
       val newHashResults = hashResultMessage.hashes
