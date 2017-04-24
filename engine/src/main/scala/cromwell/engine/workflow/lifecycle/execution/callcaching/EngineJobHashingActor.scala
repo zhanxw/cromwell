@@ -5,8 +5,10 @@ import cats.data.NonEmptyList
 import cromwell.backend.standard.callcaching.StandardFileHashingActor.SingleFileHashRequest
 import cromwell.backend.{BackendInitializationData, BackendJobDescriptor, RuntimeAttributeDefinition}
 import cromwell.core.Dispatcher.EngineDispatcher
+import cromwell.core.{ExecutionEvent, WorkflowId}
 import cromwell.core.callcaching._
 import cromwell.core.simpleton.WdlValueSimpleton
+import cromwell.engine.workflow.lifecycle.execution.CallMetadataHelper
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCacheReadActor.{CacheLookupRequest, CacheResultLookupFailure, CacheResultMatchesForHashes}
 import cromwell.engine.workflow.lifecycle.execution.callcaching.EngineJobHashingActor._
 import wdl4s.values.WdlFile
@@ -23,18 +25,23 @@ class EngineJobHashingActor(receiver: ActorRef,
                                  callCacheReadActor: ActorRef,
                                  runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
                                  backendName: String,
-                                 activity: CallCachingActivity) extends LoggingFSM[EJHAState, EJHAData] with ActorLogging {
+                                 activity: CallCachingActivity,
+                                override val serviceRegistryActor: ActorRef) extends LoggingFSM[EJHAState, EJHAData] with ActorLogging with CallMetadataHelper {
 
   private val fileHashingActor = makeFileHashingActor()
+  
+  var ev: List[ExecutionEvent] = List.empty
   
   initializeEJHA()
 
   when(WaitingForInitialCacheIds) {
     case Event(hashResultMessage: EJHAInitialHashingResults, data) =>
+      ev = ev :+ ExecutionEvent("Waiting for initial hash Ids")
       val newHashResults = hashResultMessage.hashes
       findCacheResults(newHashResults, data)
       updateStateDataWithNewHashResultsAndTransition(newHashResults)
     case Event(newCacheResults: CacheResultMatchesForHashes, _) =>
+      ev = ev :+ ExecutionEvent("Waiting for file Ids")
       val newData = stateData.intersectCacheResults(newCacheResults)
       if (newData.isDefinitelyCacheHitOrMiss) {
         respondWithHitOrMissThenTransition(newData)
@@ -43,17 +50,20 @@ class EngineJobHashingActor(receiver: ActorRef,
         goto(DeterminingHitOrMiss) using newData
       }
     case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
+      ev = ev :+ ExecutionEvent("Got file hash")
       stay() using data.withNewKnownHashes(hashResultMessage.hashes)
   }
   
   when(DeterminingHitOrMiss) {
     case Event(hashResultMessage: SuccessfulHashResultMessage, data) =>
+      ev = ev :+ ExecutionEvent("Got file hash")
       // This is in DeterminingHitOrMiss, so use the new hash results to search for cache results.
       // Also update the state data with these new hash results.
       val newHashResults = hashResultMessage.hashes
       findCacheResults(newHashResults, data)
       updateStateDataWithNewHashResultsAndTransition(newHashResults)
     case Event(newCacheResults: CacheResultMatchesForHashes, _) =>
+      ev = ev :+ ExecutionEvent("Got file Ids")
       checkWhetherHitOrMissIsKnownThenTransition(stateData.intersectCacheResults(newCacheResults))
   }
 
@@ -83,6 +93,7 @@ class EngineJobHashingActor(receiver: ActorRef,
   }
   
   private def stopAndStay() = {
+    pushExecutionEventsToMetadataService(jobDescriptor.key, ev)
     context.stop(fileHashingActor)
     context.stop(self)
     stay
@@ -117,7 +128,7 @@ class EngineJobHashingActor(receiver: ActorRef,
     val initialData = EJHAData(hashesNeeded, activity)
 
     startWith(initialState, initialData)
-
+    ev = ev :+ ExecutionEvent("Waiting for initial hash")
     // Submit the set of initial hashes for checking against the DB:
     self ! EJHAInitialHashingResults(initialHashes)
     // Find the hashes for all input files:
@@ -205,6 +216,8 @@ class EngineJobHashingActor(receiver: ActorRef,
       stay using stateData
     }
   }
+
+  override def workflowIdForCallMetadata: WorkflowId = jobDescriptor.workflowDescriptor.id
 }
 
 object EngineJobHashingActor {
@@ -216,7 +229,8 @@ object EngineJobHashingActor {
             callCacheReadActor: ActorRef,
             runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
             backendName: String,
-            activity: CallCachingActivity): Props = Props(new EngineJobHashingActor(
+            activity: CallCachingActivity,
+            serviceRegistryActor: ActorRef): Props = Props(new EngineJobHashingActor(
       receiver = receiver,
       jobDescriptor = jobDescriptor,
       initializationData = initializationData,
@@ -224,7 +238,8 @@ object EngineJobHashingActor {
       callCacheReadActor = callCacheReadActor,
       runtimeAttributeDefinitions = runtimeAttributeDefinitions,
       backendName = backendName,
-      activity = activity)).withDispatcher(EngineDispatcher)
+      activity = activity,
+      serviceRegistryActor)).withDispatcher(EngineDispatcher)
 
   private[callcaching] case class EJHAInitialHashingResults(hashes: Set[HashResult]) extends SuccessfulHashResultMessage
   private[callcaching] case object CheckWhetherAllHashesAreKnown

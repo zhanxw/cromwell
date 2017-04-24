@@ -367,7 +367,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
           initializationData,
           fileHashingActorProps,
           callCacheReadActor,
-          factory.runtimeAttributeDefinitions(initializationData), backendName, activity)
+          factory.runtimeAttributeDefinitions(initializationData), backendName, activity, serviceRegistryActor)
         context.actorOf(props, s"ejha_for_$jobDescriptor")
         
         Success(())

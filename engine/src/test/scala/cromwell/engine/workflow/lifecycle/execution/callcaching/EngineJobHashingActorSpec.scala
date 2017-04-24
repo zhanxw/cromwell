@@ -188,7 +188,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
       fileHashingActor = fileHashingActor.getOrElse(emptyActor),
       callCacheReadActor = callCacheReadActor,
       runtimeAttributeDefinitions = runtimeAttributeDefinitions,
-      backendName = backendName
+      backendName = backendName,
+      serviceRegistryActor = TestProbe().ref
       ))
   }
   
@@ -200,7 +201,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
               fileHashingActor: ActorRef,
               callCacheReadActor: ActorRef,
               runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
-              backendName: String
+              backendName: String,
+              serviceRegistryActor: ActorRef
              ) = Props(new EngineJobHashingActorTest(
       replyTo,
       activity,
@@ -209,7 +211,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
       fileHashingActor,
       callCacheReadActor,
       runtimeAttributeDefinitions,
-      backendName
+      backendName,
+      serviceRegistryActor
     ))
   }
   
@@ -220,7 +223,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
                                   fileHashingActor: ActorRef,
                                   callCacheReadActor: ActorRef,
                                   runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
-                                  backendName: String
+                                  backendName: String,
+                                  serviceRegistryActor: ActorRef
                                  ) extends EngineJobHashingActor(
     replyTo,
     jobDescriptor,
@@ -229,7 +233,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
     callCacheReadActor,
     runtimeAttributeDefinitions,
     backendName,
-    activity
+    activity,
+    serviceRegistryActor
   ) {
     override def makeFileHashingActor(): ActorRef = fileHashingActor
   }

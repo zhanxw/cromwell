@@ -14,7 +14,7 @@ case class CallCacheWriteActor(callCache: CallCache, workflowId: WorkflowId, cal
 
   implicit val ec: ExecutionContext = context.dispatcher
 
-  def receiver = context.parent
+  val receiver = context.parent
 
   callCache.addToCache(workflowId, callCacheHashes, succeededResponse) onComplete {
     case Success(_) =>
