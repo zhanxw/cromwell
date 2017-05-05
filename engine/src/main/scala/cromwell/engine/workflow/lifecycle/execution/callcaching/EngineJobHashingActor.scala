@@ -3,6 +3,7 @@ package cromwell.engine.workflow.lifecycle.execution.callcaching
 import akka.actor.{ActorLogging, ActorRef, LoggingFSM, Props}
 import cats.data.NonEmptyList
 import cromwell.backend.standard.callcaching.StandardFileHashingActor.SingleFileHashRequest
+import cromwell.backend.validation.RuntimeAttributesKeys
 import cromwell.backend.{BackendInitializationData, BackendJobDescriptor, RuntimeAttributeDefinition}
 import cromwell.core.Dispatcher.EngineDispatcher
 import cromwell.core.callcaching._
@@ -23,7 +24,8 @@ class EngineJobHashingActor(receiver: ActorRef,
                                  callCacheReadActor: ActorRef,
                                  runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
                                  backendName: String,
-                                 activity: CallCachingActivity) extends LoggingFSM[EJHAState, EJHAData] with ActorLogging {
+                                 activity: CallCachingActivity,
+                                 dockerWithHash: DockerWithHash) extends LoggingFSM[EJHAState, EJHAData] with ActorLogging {
 
   private val fileHashingActor = makeFileHashingActor()
   
@@ -115,6 +117,8 @@ class EngineJobHashingActor(receiver: ActorRef,
     val outputCountHash = HashResult(HashKey("output count"), jobDescriptor.call.task.outputs.size.toString.md5HashValue)
 
     val runtimeAttributeHashes = runtimeAttributeDefinitions map { definition => jobDescriptor.runtimeAttributes.get(definition.name) match {
+      case Some(wdlValue) if definition.name == RuntimeAttributesKeys.DockerKey => 
+        HashResult(HashKey("runtime attribute: " + definition.name, definition.usedInCallCaching), dockerWithHash.dockerAttribute.md5HashValue)
       case Some(wdlValue) => HashResult(HashKey("runtime attribute: " + definition.name, definition.usedInCallCaching), wdlValue.valueString.md5HashValue)
       case None => HashResult(HashKey("runtime attribute: " + definition.name, definition.usedInCallCaching), UnspecifiedRuntimeAttributeHashValue)
     }}
@@ -199,7 +203,8 @@ object EngineJobHashingActor {
             callCacheReadActor: ActorRef,
             runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition],
             backendName: String,
-            activity: CallCachingActivity): Props = Props(new EngineJobHashingActor(
+            activity: CallCachingActivity,
+            dockerWithHash: DockerWithHash): Props = Props(new EngineJobHashingActor(
       receiver = receiver,
       jobDescriptor = jobDescriptor,
       initializationData = initializationData,
@@ -207,7 +212,8 @@ object EngineJobHashingActor {
       callCacheReadActor = callCacheReadActor,
       runtimeAttributeDefinitions = runtimeAttributeDefinitions,
       backendName = backendName,
-      activity = activity)).withDispatcher(EngineDispatcher)
+      activity = activity,
+      dockerWithHash = dockerWithHash)).withDispatcher(EngineDispatcher)
 
   private[callcaching] case class EJHAInitialHashingResults(hashes: Set[HashResult]) extends SuccessfulHashResultMessage
   private[callcaching] case object CheckWhetherAllHashesAreKnown

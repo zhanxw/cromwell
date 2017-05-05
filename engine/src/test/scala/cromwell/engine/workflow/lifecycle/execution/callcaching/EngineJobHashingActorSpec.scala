@@ -229,7 +229,8 @@ object EngineJobHashingActorSpec extends BackendSpec {
     callCacheReadActor,
     runtimeAttributeDefinitions,
     backendName,
-    activity
+    activity,
+    DockerWithHash("docker")
   ) {
     override def makeFileHashingActor(): ActorRef = fileHashingActor
   }
@@ -243,7 +244,7 @@ object EngineJobHashingActorSpec extends BackendSpec {
     when(task.outputs).thenReturn(List.empty)
     when(call.task).thenReturn(task)
     val workflowDescriptor = mock[BackendWorkflowDescriptor]
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, BackendJobDescriptorKey(call, None, 1), Map.empty, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, BackendJobDescriptorKey(call, None, 1), Map.empty, fqnMapToDeclarationMap(inputs), None, Map.empty)
     jobDescriptor
   }
 
