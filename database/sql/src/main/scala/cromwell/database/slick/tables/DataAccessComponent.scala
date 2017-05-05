@@ -25,6 +25,7 @@ class DataAccessComponent(val driver: JdbcProfile)
       callCachingEntries.schema ++
       callCachingHashEntries.schema ++
       callCachingSimpletonEntries.schema ++
+      dockerHashStoreEntries.schema ++
       jobKeyValueEntries.schema ++
       jobStoreEntries.schema ++
       jobStoreSimpletonEntries.schema ++
