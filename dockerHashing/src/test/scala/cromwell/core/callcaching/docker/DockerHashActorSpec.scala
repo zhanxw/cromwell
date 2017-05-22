@@ -115,5 +115,13 @@ class DockerHashActorSpec extends TestKitSuite with FlatSpecLike with Matchers w
     expectMsg(responseFailure)
     mockHttpFlow.count() shouldBe 2
   }
+
+  it should "not deadlock" taggedAs IntegrationTest in {
+    0 until 400 foreach { _ =>
+      dockerActor ! makeRequest("gcr.io/google-containers/alpine-with-bash:1.0")
+    }
+
+    receiveN(400, 1 minute)
+  }
   
 }
