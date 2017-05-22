@@ -2,20 +2,24 @@ package cromwell.core.callcaching.docker.registryv2.flows
 
 import akka.NotUsed
 import akka.actor.Scheduler
+import akka.http.scaladsl.Http
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse, StatusCodes}
-import akka.stream.FanOutShape2
+import akka.stream.{ActorMaterializer, FanOutShape2}
 import akka.stream.javadsl.MergePreferred
 import akka.stream.scaladsl.{Flow, GraphDSL, Partition}
 import cromwell.core.callcaching.docker.registryv2.flows.FlowUtils._
 import cromwell.core.callcaching.docker.registryv2.flows.HttpFlowWithRetry._
 import cromwell.core.retry.{Backoff, SimpleExponentialBackoff}
+import org.slf4j.LoggerFactory
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}
 import scala.language.postfixOps
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 
 object HttpFlowWithRetry {
+  val Logger = LoggerFactory.getLogger("HttpLogger")
+  
   def isRetryable(response: HttpResponse) = {
     response.status match {
       case StatusCodes.InternalServerError => true
@@ -68,13 +72,23 @@ case class HttpFlowWithRetry[T](
                             retryBufferSize: Int = 100,
                             requestBackoff: () => Backoff = defaultRequestBackoff,
                             maxAttempts: Int = 3
-                          )(implicit val scheduler: Scheduler, ec: ExecutionContext) {
+                          )(implicit val scheduler: Scheduler, ec: ExecutionContext, mat: ActorMaterializer) {
+  implicit private val actorSystem = mat.system
   
   lazy val flow = GraphDSL.create() { implicit builder =>
     import GraphDSL.Implicits._
 
     // Http shape
-    val http = builder.add(httpClientFlow)
+    val http = builder.add(
+      Flow[(HttpRequest, ContextWithRequest[T])]
+        .mapAsync(10) ({
+          case (request, context) => Http().singleRequest(request) map { response =>
+            Success(response) -> context
+          } recoverWith {
+            case failure => Future.successful(Failure(failure) -> context)
+          }
+        })
+    )
     
     // Wrap the user context into a pair of (flowContext, httpRequest) to allow for retries
     val source = builder.add(Flow[(HttpRequest, T)] map {
@@ -85,7 +99,21 @@ case class HttpFlowWithRetry[T](
     val partitionResponseTry = builder.add(fanOutTry[HttpResponse, ContextWithRequest[T]])
     
     // Those are pairs like: (HttpResponse, Context) 
-    val requestSuccessful = partitionResponseTry.out0
+    val requestSuccessful = partitionResponseTry.out0.mapAsync(10) {
+      case (response, context) => response.toStrict(30 seconds) map { strictResponse =>
+        strictResponse -> context
+      } recoverWith {
+        case strictFailure =>
+          Logger.error("Failed to retrieve HttpResponse content. Trying ti discard byte content.", strictFailure)
+          response.discardEntityBytes().future() map { _ =>
+          response -> context
+        } recoverWith {
+          case _ =>
+            Logger.error("Failed to discard byte content. Forwarding the original response.", strictFailure)
+            Future.successful(response -> context)
+        }
+      }
+    }
     
     // Those are pairs like: (Throwable, Context) 
     // -> akka-http already retries request if they fail, so we won't retry this and send it to the failure port
