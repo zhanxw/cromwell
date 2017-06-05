@@ -99,7 +99,7 @@ import scala.language.postfixOps
     case DockerLocalLookup => Seq(dockerCliFlow)
     case DockerRemoteLookup => Seq(dockerHubFlow, googleFlow, quayFlow)
   }
-  lazy val dockerHashActor = context.actorOf(DockerHashActor.props(dockerFlows, dockerActorQueueSize, dockerConf.cacheEntryTtl, dockerConf.cacheSize)(materializer).withDispatcher(Dispatcher.IoDispatcher))
+  lazy val dockerHashActor = context.actorOf(DockerHashActor.props(dockerFlows, dockerActorQueueSize, dockerConf.cacheMode, dockerConf.cacheSize)(materializer).withDispatcher(Dispatcher.IoDispatcher))
 
   lazy val backendSingletons = CromwellBackends.instance.get.backendLifecycleActorFactories map {
     case (name, factory) => name -> (factory.backendSingletonActorProps map context.actorOf)

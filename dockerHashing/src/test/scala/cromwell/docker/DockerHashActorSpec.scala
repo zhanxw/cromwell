@@ -1,5 +1,6 @@
 package cromwell.docker
 
+import cromwell.core.DockerConfiguration.{CacheExpiresAfterAccess, CacheExpiresAfterWrite}
 import cromwell.core.Tags.IntegrationTest
 import cromwell.docker.DockerHashActor._
 import cromwell.docker.registryv2.flows.dockerhub.DockerHubFlow
@@ -69,7 +70,7 @@ class DockerHashActorSpec extends DockerFlowSpec("DockerHashActorSpec") with Fla
     
     // Send back success, failure, success, failure, ...
     val mockHttpFlow = new DockerFlowMock(mockResponseSuccess, mockResponseFailure)
-    val dockerActorWithCache = system.actorOf(DockerHashActor.props(Seq(mockHttpFlow), 1000, 3 seconds, 10)(materializer))
+    val dockerActorWithCache = system.actorOf(DockerHashActor.props(Seq(mockHttpFlow), 1000, CacheExpiresAfterWrite(3 seconds), 10)(materializer))
     
     dockerActorWithCache ! request
     expectMsg(DockerHashSuccessResponse(hashSuccess, request))
@@ -92,7 +93,7 @@ class DockerHashActorSpec extends DockerFlowSpec("DockerHashActorSpec") with Fla
 
 
   it should "not deadlock" taggedAs IntegrationTest in {
-    lazy val dockerActorScale = system.actorOf(DockerHashActor.props(registryFlows, 1000, 20.minutes, 0)(materializer))
+    lazy val dockerActorScale = system.actorOf(DockerHashActor.props(registryFlows, 1000, CacheExpiresAfterAccess(20.minutes), 0)(materializer))
     0 until 400 foreach { _ =>
       dockerActorScale ! makeRequest("gcr.io/google-containers/alpine-with-bash:1.0")
     }

@@ -5,17 +5,16 @@ import akka.stream._
 import akka.stream.scaladsl.{GraphDSL, Merge, Partition, Sink, Source}
 import com.google.common.cache.CacheBuilder
 import cromwell.core.Dispatcher
+import cromwell.core.DockerConfiguration.{CacheExpiresAfterAccess, CacheExpiresAfterWrite, DockerCacheMode}
 import cromwell.core.actor.StreamActorHelper
 import cromwell.core.actor.StreamIntegration.StreamContext
 import cromwell.docker.DockerHashActor._
 import org.slf4j.LoggerFactory
 
-import scala.concurrent.duration.FiniteDuration
-
 final class DockerHashActor(
                            dockerRegistryFlows: Seq[DockerFlow],
                            queueBufferSize: Int,
-                           cacheEntryTTL: FiniteDuration,
+                           cacheMode:DockerCacheMode,
                            cacheSize: Long
                           )(implicit val materializer: ActorMaterializer) extends Actor with ActorLogging with StreamActorHelper[DockerHashContext] {
 
@@ -41,12 +40,19 @@ final class DockerHashActor(
    *      
    *  + maximumSize sets the maximum amount of entries the cache can contain. 
    *    If/when this size is reached, least used entries will be expired
-   */  
-  private val cache = CacheBuilder.newBuilder()
-    .concurrencyLevel(2)
-    .expireAfterWrite(cacheEntryTTL._1, cacheEntryTTL._2)
-    .maximumSize(cacheSize)
-    .build[DockerImageIdentifierWithoutHash, DockerHashResult]()
+   */
+  private val cache = {
+    val cacheBuilder = CacheBuilder.newBuilder()
+      .concurrencyLevel(2)
+      .maximumSize(cacheSize)
+
+    cacheMode match {
+      case CacheExpiresAfterAccess(ttl) => cacheBuilder.expireAfterAccess(ttl._1, ttl._2)
+      case CacheExpiresAfterWrite(ttl) => cacheBuilder.expireAfterWrite(ttl._1, ttl._2)
+    }
+
+    cacheBuilder.build[DockerImageIdentifierWithoutHash, DockerHashResult]()
+  }
 
   /*
    * Intermediate sink responsible for updating the cache as soon as a successful hash is retrieved
@@ -157,6 +163,6 @@ object DockerHashActor {
 
   def props(dockerRegistryFlows: Seq[DockerFlow],
             queueBufferSize: Int = 100,
-            cacheEntryTTL: FiniteDuration,
-            cacheSize: Long)(materializer: ActorMaterializer) = Props(new DockerHashActor(dockerRegistryFlows, queueBufferSize, cacheEntryTTL, cacheSize)(materializer))
+            cacheMode: DockerCacheMode,
+            cacheSize: Long)(materializer: ActorMaterializer) = Props(new DockerHashActor(dockerRegistryFlows, queueBufferSize, cacheMode, cacheSize)(materializer))
 }
