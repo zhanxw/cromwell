@@ -1,9 +1,9 @@
 package cromwell.util.JsonFormatting
 
 import spray.json._
-import wdl4s.WdlExpression
-import wdl4s.types.{WdlArrayType, WdlMapType, WdlStringType}
-import wdl4s.values._
+import wdl4s.wdl.WdlExpression
+import wdl4s.wdl.types._
+import wdl4s.wdl.values._
 
 object WdlValueJsonFormatter extends DefaultJsonProtocol {
   implicit object WdlValueJsonFormat extends RootJsonFormat[WdlValue] {

@@ -22,7 +22,7 @@ import spray.http._
 import spray.httpx.SprayJsonSupport._
 import spray.json._
 import spray.routing._
-import wdl4s.{WdlJson, WdlSource}
+import wdl4s.wdl.{WdlJson, WdlSource}
 
 import scala.util.{Failure, Success, Try}
 

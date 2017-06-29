@@ -12,8 +12,8 @@ import spray.client.pipelining._
 import spray.http.HttpRequest
 import spray.httpx.SprayJsonSupport._
 import spray.httpx.unmarshalling._
-import wdl4s.expression.NoFunctions
-import wdl4s.values.WdlFile
+import wdl4s.wdl.expression.NoFunctions
+import wdl4s.wdl.values.WdlFile
 
 import scala.concurrent.duration._
 import scala.concurrent.{ExecutionContext, Future}

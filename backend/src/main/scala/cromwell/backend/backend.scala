@@ -4,17 +4,17 @@ import com.typesafe.config.Config
 import cromwell.core.WorkflowOptions.WorkflowOption
 import cromwell.core.callcaching.MaybeCallCachingEligible
 import cromwell.core.labels.Labels
-import cromwell.core.{CallKey, WorkflowId, WorkflowOptions}
+import cromwell.core.{CallKey, FullyQualifiedName, LocallyQualifiedName, WorkflowId, WorkflowOptions}
 import cromwell.services.keyvalue.KeyValueServiceActor.KvResponse
-import wdl4s._
-import wdl4s.values.WdlValue
+import wdl4s.wdl.values.WdlValue
+import wdl4s.wdl.{EvaluatedTaskInputs, WdlTaskCall, WdlWorkflow}
 
 import scala.util.Try
 
 /**
   * For uniquely identifying a job which has been or will be sent to the backend.
   */
-case class BackendJobDescriptorKey(call: TaskCall, index: Option[Int], attempt: Int) extends CallKey {
+case class BackendJobDescriptorKey(call: WdlTaskCall, index: Option[Int], attempt: Int) extends CallKey {
   def scope = call
   private val indexString = index map { _.toString } getOrElse "NA"
   val tag = s"${call.fullyQualifiedName}:$indexString:$attempt"
@@ -37,7 +37,7 @@ case class BackendJobDescriptor(workflowDescriptor: BackendWorkflowDescriptor,
 
 object BackendWorkflowDescriptor {
   def apply(id: WorkflowId,
-            workflow: Workflow,
+            workflow: WdlWorkflow,
             knownValues: Map[FullyQualifiedName, WdlValue],
             workflowOptions: WorkflowOptions,
             customLabels: Labels) = {
@@ -49,7 +49,7 @@ object BackendWorkflowDescriptor {
   * For passing to a BackendActor construction time
   */
 case class BackendWorkflowDescriptor(id: WorkflowId,
-                                     workflow: Workflow,
+                                     workflow: WdlWorkflow,
                                      knownValues: Map[FullyQualifiedName, WdlValue],
                                      workflowOptions: WorkflowOptions,
                                      customLabels: Labels,

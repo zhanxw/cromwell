@@ -4,11 +4,10 @@ import java.util.UUID
 
 import cromwell.core.WorkflowSourceFilesWithoutImports
 import cromwell.core.path.{DefaultPathBuilder, Path}
-import cromwell.core.WorkflowSourceFilesWithoutImports
 import spray.json._
-import wdl4s._
-import wdl4s.types.{WdlArrayType, WdlStringType}
-import wdl4s.values._
+import wdl4s.wdl.types.{WdlArrayType, WdlStringType}
+import wdl4s.wdl.values._
+import wdl4s.wdl.{WdlJson, WdlSource, WorkflowRawInputs}
 
 import scala.language.postfixOps
 

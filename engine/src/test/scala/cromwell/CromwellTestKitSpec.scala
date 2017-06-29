@@ -37,10 +37,10 @@ import org.scalatest.concurrent.{Eventually, ScalaFutures}
 import org.scalatest.time.{Millis, Seconds, Span}
 import spray.http.StatusCode
 import spray.json._
-import wdl4s.TaskCall
-import wdl4s.expression.{NoFunctions, WdlStandardLibraryFunctions}
-import wdl4s.types._
-import wdl4s.values._
+import wdl4s.wdl.WdlTaskCall
+import wdl4s.wdl.expression.{NoFunctions, WdlStandardLibraryFunctions}
+import wdl4s.wdl.types._
+import wdl4s.wdl.values._
 
 import scala.concurrent.duration._
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -51,7 +51,7 @@ case class TestBackendLifecycleActorFactory(configurationDescriptor: BackendConf
   extends BackendLifecycleActorFactory {
   override def workflowInitializationActorProps(workflowDescriptor: BackendWorkflowDescriptor,
                                                 ioActor: ActorRef,
-                                                calls: Set[TaskCall],
+                                                calls: Set[WdlTaskCall],
                                                 serviceRegistryActor: ActorRef): Option[Props] = None
 
   override def jobExecutionActorProps(jobDescriptor: BackendJobDescriptor,

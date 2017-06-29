@@ -11,9 +11,9 @@ import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Millis, Seconds, Span}
 import org.specs2.mock.Mockito
 import spray.json.{JsObject, JsValue}
-import wdl4s._
-import wdl4s.expression.NoFunctions
-import wdl4s.values.WdlValue
+import wdl4s.wdl._
+import wdl4s.wdl.expression.NoFunctions
+import wdl4s.wdl.values.WdlValue
 
 trait BackendSpec extends ScalaFutures with Matchers with Mockito {
 
