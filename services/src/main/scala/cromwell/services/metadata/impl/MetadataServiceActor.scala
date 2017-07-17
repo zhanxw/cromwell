@@ -51,6 +51,7 @@ case class MetadataServiceActor(serviceConfig: Config, globalConfig: Config)
   val dbBatchSize = serviceConfig.as[Option[Int]]("services.MetadataService.db-batch-size").getOrElse(200)
   val writeActor = context.actorOf(WriteMetadataActor.props(dbBatchSize, dbFlushRate), "write-metadata-actor")
   implicit val ec = context.dispatcher
+  log.info(s"Metadata Service batch size is $dbBatchSize.")
 
   summaryActor foreach { _ => self ! RefreshSummary }
 

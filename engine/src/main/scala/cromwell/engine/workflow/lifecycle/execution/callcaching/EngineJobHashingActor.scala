@@ -67,6 +67,8 @@ class EngineJobHashingActor(receiver: ActorRef,
       }
     case hashingFailed: HashingFailedMessage =>
       failAndStop(hashingFailed.reason)
+    case hashError: HashError =>
+      failAndStop(hashingError.reason)
     case unexpected =>
       jobLogger.error(s"Received unexpected event $unexpected")
   }
