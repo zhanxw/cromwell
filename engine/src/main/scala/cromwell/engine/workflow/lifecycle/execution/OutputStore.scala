@@ -7,12 +7,21 @@ import cromwell.engine.workflow.lifecycle.execution.OutputStore.OutputKey
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.CollectorKey
 import wdl4s.wdl.types.WdlType
 import wdl4s.wdl.values.WdlValue
+import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
 import wdl4s.wom.graph.GraphNodePort.OutputPort
 import wdl4s.wom.graph._
 
 import scala.util.{Failure, Try}
 
 object OutputStore {
+  def initialize(knownValues: Map[OutputPort, ResolvedWorkflowInput]): OutputStore = {
+    val wdlValues = knownValues flatMap {
+      // Known wdl values can be added to the output store
+      case (port, resolvedValue) => resolvedValue.select[WdlValue] map { OutputKey(port, None) -> _ }
+    }
+    OutputStore(wdlValues)
+  }
+
   case class OutputEntry(name: String, wdlType: WdlType, wdlValue: Option[WdlValue])
   case class OutputKey(port: OutputPort, index: ExecutionIndex)
   def empty = OutputStore(Map.empty)

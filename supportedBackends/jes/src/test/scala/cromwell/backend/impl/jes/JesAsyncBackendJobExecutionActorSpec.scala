@@ -34,6 +34,8 @@ import spray.json.{JsObject, JsValue}
 import wdl4s.wdl._
 import wdl4s.wdl.types.{WdlArrayType, WdlFileType, WdlMapType, WdlStringType}
 import wdl4s.wdl.values.{WdlArray, WdlFile, WdlMap, WdlString, WdlValue}
+import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
+import wdl4s.wom.graph.GraphNodePort.OutputPort
 import wdl4s.wom.graph.TaskCallNode
 
 import scala.concurrent.duration._
@@ -46,7 +48,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
   val mockPathBuilder: GcsPathBuilder = GcsPathBuilder.fromCredentials(NoCredentials.getInstance(),
     "test-cromwell", None, GcsPathBuilderFactory.DefaultCloudStorageConfiguration, WorkflowOptions.empty)
-  
+
   var kvService: ActorRef = system.actorOf(Props(new InMemoryKvServiceActor))
 
   import JesTestConfig._
@@ -55,23 +57,23 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
   val YoSup: String =
     s"""
-      |task sup {
-      |  String addressee
-      |  command {
-      |    echo "yo sup $${addressee}!"
-      |  }
-      |  output {
-      |    String salutation = read_string(stdout())
-      |  }
-      |  runtime {
-      |    docker: "ubuntu:latest"
-      |    [PREEMPTIBLE]
-      |  }
-      |}
-      |
+       |task sup {
+       |  String addressee
+       |  command {
+       |    echo "yo sup $${addressee}!"
+       |  }
+       |  output {
+       |    String salutation = read_string(stdout())
+       |  }
+       |  runtime {
+       |    docker: "ubuntu:latest"
+       |    [PREEMPTIBLE]
+       |  }
+       |}
+       |
       |workflow wf_sup {
-      |  call sup
-      |}
+       |  call sup
+       |}
     """.stripMargin
 
   val Inputs = Map("sup.sup.addressee" -> WdlString("dog"))
@@ -142,22 +144,25 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
   private def buildPreemptibleJobDescriptor(preemptible: Int, previousPreemptions: Int, previousUnexpectedRetries: Int): BackendJobDescriptor = {
     val attempt = previousPreemptions + previousUnexpectedRetries + 1
-        val workflowDescriptor = BackendWorkflowDescriptor(
-          WorkflowId.randomId(),
-          WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", s"preemptible: $preemptible"),
-            Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-          Inputs,
-          NoOptions,
-          Labels.empty
-        )
+    val womDefinition = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", s"preemptible: $preemptible"),
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val resolvedWorkflowInputs = womDefinition.innerGraph.validateWorkflowInputs(Inputs).getOrElse(fail("Can't validate inputs"))
 
-        val job = workflowDescriptor.workflow.taskCallNodes.head
-        val key = BackendJobDescriptorKey(job, None, attempt)
-        val runtimeAttributes = makeRuntimeAttributes(job)
-        val prefetchedKvEntries = Map(
-          JesBackendLifecycleActorFactory.preemptionCountKey -> KvPair(ScopedKey(workflowDescriptor.id, KvJobKey(key), JesBackendLifecycleActorFactory.preemptionCountKey), Some(previousPreemptions.toString)),
-          JesBackendLifecycleActorFactory.unexpectedRetryCountKey -> KvPair(ScopedKey(workflowDescriptor.id, KvJobKey(key), JesBackendLifecycleActorFactory.unexpectedRetryCountKey), Some(previousUnexpectedRetries.toString)))
-        BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(Inputs), NoDocker, prefetchedKvEntries)
+    val workflowDescriptor = BackendWorkflowDescriptor(
+      WorkflowId.randomId(),
+      womDefinition,
+      resolvedWorkflowInputs,
+      NoOptions,
+      Labels.empty
+    )
+
+    val job = workflowDescriptor.workflow.taskCallNodes.head
+    val key = BackendJobDescriptorKey(job, None, attempt)
+    val runtimeAttributes = makeRuntimeAttributes(job)
+    val prefetchedKvEntries = Map(
+      JesBackendLifecycleActorFactory.preemptionCountKey -> KvPair(ScopedKey(workflowDescriptor.id, KvJobKey(key), JesBackendLifecycleActorFactory.preemptionCountKey), Some(previousPreemptions.toString)),
+      JesBackendLifecycleActorFactory.unexpectedRetryCountKey -> KvPair(ScopedKey(workflowDescriptor.id, KvJobKey(key), JesBackendLifecycleActorFactory.unexpectedRetryCountKey), Some(previousUnexpectedRetries.toString)))
+    BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(Inputs), NoDocker, prefetchedKvEntries)
   }
 
   private def executionActor(jobDescriptor: BackendJobDescriptor,
@@ -212,7 +217,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   }
 
   behavior of "JesAsyncBackendJobExecutionActor"
-  
+
   val timeout = 25 seconds
 
   { // Set of "handle call failures appropriately with respect to preemption and failure" tests
@@ -339,11 +344,15 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
       gcsFileKey -> gcsFileVal
     )
 
+    val womWorkflow = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", ""),
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    
+    val resolvedWorkflowInputs: Map[OutputPort, ResolvedWorkflowInput] = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
-      WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", ""),
-        Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-      inputs,
+      womWorkflow,
+      resolvedWorkflowInputs,
       NoOptions,
       Labels.empty
     )
@@ -351,7 +360,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val call: TaskCallNode = workflowDescriptor.workflow.innerGraph.nodes.collectFirst({case t: TaskCallNode => t}).get
     val key = BackendJobDescriptorKey(call, None, 1)
     val runtimeAttributes = makeRuntimeAttributes(call)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(inputs), NoDocker, Map.empty)
 
     val props = Props(new TestableJesJobExecutionActor(jobDescriptor, Promise(), jesConfiguration))
     val testActorRef = TestActorRef[TestableJesJobExecutionActor](
@@ -400,11 +409,15 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
       ))
     )
 
+    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+
+    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
-      WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-        Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-      inputs,
+      womWorkflow,
+      resolvedWorkflowInputs,
       NoOptions,
       Labels.empty
     )
@@ -412,7 +425,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val job: TaskCallNode = workflowDescriptor.workflow.taskCallNodes.head
     val runtimeAttributes = makeRuntimeAttributes(job)
     val key = BackendJobDescriptorKey(job, None, 1)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(inputs), NoDocker, Map.empty)
 
     val props = Props(new TestableJesJobExecutionActor(jobDescriptor, Promise(), jesConfiguration))
     val testActorRef = TestActorRef[TestableJesJobExecutionActor](
@@ -441,11 +454,15 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   def makeJesActorRef(sampleWdl: SampleWdl, callName: LocallyQualifiedName, inputs: Map[FullyQualifiedName, WdlValue],
                       functions: JesExpressionFunctions = TestableJesExpressionFunctions):
   TestActorRef[TestableJesJobExecutionActor] = {
+    val womWorkflow = WdlNamespaceWithWorkflow.load(sampleWdl.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+
+    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
-      WdlNamespaceWithWorkflow.load(sampleWdl.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-        Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-      inputs,
+      womWorkflow,
+      resolvedWorkflowInputs,
       NoOptions,
       Labels.empty
     )
@@ -453,7 +470,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val call: TaskCallNode = workflowDescriptor.workflow.taskCallNodes.find(_.name == callName).get
     val key = BackendJobDescriptorKey(call, None, 1)
     val runtimeAttributes = makeRuntimeAttributes(call)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(inputs), NoDocker, Map.empty)
 
     val props = Props(new TestableJesJobExecutionActor(jobDescriptor, Promise(), jesConfiguration, functions))
     TestActorRef[TestableJesJobExecutionActor](props, s"TestableJesJobExecutionActor-${jobDescriptor.workflowDescriptor.id}")
@@ -503,11 +520,15 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
         WdlArray(WdlArrayType(WdlFileType), Seq(WdlFile("gs://path/to/file1"), WdlFile("gs://path/to/file2")))
     )
 
+    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+
+    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
-      WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-        Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-      inputs,
+      womWorkflow,
+      resolvedWorkflowInputs,
       NoOptions,
       Labels.empty
     )
@@ -515,7 +536,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val job: TaskCallNode = workflowDescriptor.workflow.taskCallNodes.head
     val runtimeAttributes = makeRuntimeAttributes(job)
     val key = BackendJobDescriptorKey(job, None, 1)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(inputs), NoDocker, Map.empty)
 
     val props = Props(new TestableJesJobExecutionActor(jobDescriptor, Promise(), jesConfiguration))
     val testActorRef = TestActorRef[TestableJesJobExecutionActor](
@@ -533,11 +554,15 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
       "file2" -> WdlFile("gs://path/to/file2")
     )
 
+    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
+      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+
+    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
-      WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-        Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow")),
-      inputs,
+      womWorkflow,
+      resolvedWorkflowInputs,
       NoOptions,
       Labels.empty
     )
@@ -545,7 +570,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val job: TaskCallNode = workflowDescriptor.workflow.taskCallNodes.head
     val runtimeAttributes = makeRuntimeAttributes(job)
     val key = BackendJobDescriptorKey(job, None, 1)
-    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
+    val jobDescriptor = BackendJobDescriptor(workflowDescriptor, key, runtimeAttributes, fqnWdlMapToDeclarationMap(inputs), NoDocker, Map.empty)
 
     val props = Props(new TestableJesJobExecutionActor(jobDescriptor, Promise(), jesConfiguration))
     val testActorRef = TestActorRef[TestableJesJobExecutionActor](

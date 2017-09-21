@@ -34,7 +34,7 @@ class SharedFileSystemSpec extends FlatSpec with Matchers with Mockito with Tabl
       dest.touch()
     }
 
-    val inputs = fqnMapToDeclarationMap(Map("input" -> WdlFile(orig.pathAsString)))
+    val inputs = fqnWdlMapToDeclarationMap(Map("input" -> WdlFile(orig.pathAsString)))
     val sharedFS = new SharedFileSystem {
       override val pathBuilders = localPathBuilder
       override val sharedFileSystemConfig = config
@@ -81,7 +81,7 @@ class SharedFileSystemSpec extends FlatSpec with Matchers with Mockito with Tabl
     val callDir = DefaultPathBuilder.createTempDirectory("SharedFileSystem")
     val orig = DefaultPathBuilder.get("/made/up/origin")
 
-    val inputs = fqnMapToDeclarationMap(Map("input" -> WdlFile(orig.pathAsString)))
+    val inputs = fqnWdlMapToDeclarationMap(Map("input" -> WdlFile(orig.pathAsString)))
     val sharedFS = new SharedFileSystem {
       override val pathBuilders = localPathBuilder
       override val sharedFileSystemConfig = defaultLocalization

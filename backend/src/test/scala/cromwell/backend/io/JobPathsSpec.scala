@@ -28,7 +28,7 @@ class JobPathsSpec extends FlatSpec with Matchers with BackendSpec {
 
   "JobPaths" should "provide correct paths for a job" in {
 
-    val wd = buildWorkflowDescriptor(TestWorkflows.HelloWorld)
+    val wd = buildWdlWorkflowDescriptor(TestWorkflows.HelloWorld)
     val call: TaskCallNode = wd.workflow.taskCallNodes.head
     val jobKey: BackendJobDescriptorKey = BackendJobDescriptorKey(call, None, 1)
     val workflowPaths = new WorkflowPathsWithDocker(wd, backendConfig)

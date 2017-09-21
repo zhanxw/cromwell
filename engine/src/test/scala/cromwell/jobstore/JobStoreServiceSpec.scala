@@ -31,7 +31,7 @@ class JobStoreServiceSpec extends CromwellTestKitWordSpec with Matchers with Moc
 
       val workflowId = WorkflowId.randomId()
       val mockTask = WomMocks.mockTaskDefinition("bar")
-      .copy(outputs = Set(OutputDefinition("baz", WdlStringType, EmptyExpression))) 
+      .copy(outputs = List(OutputDefinition("baz", WdlStringType, EmptyExpression))) 
       val successCall = WomMocks.mockTaskCall("bar", definition = mockTask)
 
       val successKey = BackendJobDescriptorKey(successCall, None, 1).toJobStoreKey(workflowId)
@@ -44,7 +44,7 @@ class JobStoreServiceSpec extends CromwellTestKitWordSpec with Matchers with Moc
       jobStoreService ! RegisterJobCompleted(successKey, JobResultSuccess(Option(0), outputs))
       expectMsgType[JobStoreWriteSuccess](MaxWait)
 
-      jobStoreService ! QueryJobCompletion(successKey, mockTask.outputs.toSeq)
+      jobStoreService ! QueryJobCompletion(successKey, mockTask.outputs)
       expectMsgPF(MaxWait) {
         case JobComplete(JobResultSuccess(Some(0), os)) if os == outputs =>
       }
@@ -52,13 +52,13 @@ class JobStoreServiceSpec extends CromwellTestKitWordSpec with Matchers with Moc
       val failureCall = WomMocks.mockTaskCall("qux")
       val failureKey = BackendJobDescriptorKey(failureCall, None, 1).toJobStoreKey(workflowId)
 
-      jobStoreService ! QueryJobCompletion(failureKey, mockTask.outputs.toSeq)
+      jobStoreService ! QueryJobCompletion(failureKey, mockTask.outputs)
       expectMsgType[JobNotComplete.type](MaxWait)
 
       jobStoreService ! RegisterJobCompleted(failureKey, JobResultFailure(Option(11), new IllegalArgumentException("Insufficient funds"), retryable = false))
       expectMsgType[JobStoreWriteSuccess](MaxWait)
 
-      jobStoreService ! QueryJobCompletion(failureKey, mockTask.outputs.toSeq)
+      jobStoreService ! QueryJobCompletion(failureKey, mockTask.outputs)
       expectMsgPF(MaxWait) {
         case JobComplete(JobResultFailure(Some(11), _, false)) =>
       }

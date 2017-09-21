@@ -79,7 +79,7 @@ class TesInitializationActorSpec extends TestKitSuite("TesInitializationActorSpe
   "TesInitializationActor" should {
     "log a warning message when there are unsupported runtime attributes" taggedAs PostWomTest ignore {
       within(Timeout) {
-        val workflowDescriptor = buildWorkflowDescriptor(HelloWorld,
+        val workflowDescriptor = buildWdlWorkflowDescriptor(HelloWorld,
           runtime = """runtime { docker: "ubuntu/latest" test: true }""")
         val backend = getActorRef(workflowDescriptor, workflowDescriptor.workflow.taskCallNodes, conf)
         val eventPattern =
@@ -96,7 +96,7 @@ class TesInitializationActorSpec extends TestKitSuite("TesInitializationActorSpe
 
     "return InitializationFailed when docker runtime attribute key is not present" taggedAs PostWomTest ignore {
       within(Timeout) {
-        val workflowDescriptor = buildWorkflowDescriptor(HelloWorld, runtime = """runtime { }""")
+        val workflowDescriptor = buildWdlWorkflowDescriptor(HelloWorld, runtime = """runtime { }""")
         val backend = getActorRef(workflowDescriptor, workflowDescriptor.workflow.taskCallNodes, conf)
         backend ! Initialize
         expectMsgPF() {

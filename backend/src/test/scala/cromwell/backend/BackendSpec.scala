@@ -10,10 +10,14 @@ import org.scalatest.Matchers
 import org.scalatest.concurrent.ScalaFutures
 import org.scalatest.time.{Millis, Seconds, Span}
 import org.specs2.mock.Mockito
+import shapeless.Coproduct
 import spray.json.{JsObject, JsValue}
 import wdl4s.wdl._
+import wdl4s.wdl.types.WdlAnyType
 import wdl4s.wdl.values.{WdlOptionalValue, WdlValue}
-import wdl4s.wom.callable.Callable.{InputDefinition, OptionalInputDefinition, OptionalInputDefinitionWithDefault, RequiredInputDefinition}
+import wdl4s.wom.callable.Callable.{InputDefinition, InputDefinitionWithDefault, OptionalInputDefinition, RequiredInputDefinition}
+import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
+import wdl4s.wom.graph.GraphNodePort.{GraphNodeOutputPort, OutputPort}
 import wdl4s.wom.graph.TaskCallNode
 
 import scala.language.postfixOps
@@ -26,10 +30,12 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
     executeJobAndAssertOutputs(backend, workflow.expectedResponse)
   }
 
+
+  
   def buildWorkflowDescriptor(workflowSource: WorkflowSource,
-                              inputs: Map[String, WdlValue] = Map.empty,
-                              options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
-                              runtime: String = "") = {
+                                 inputs: Map[OutputPort, ResolvedWorkflowInput] = Map.empty,
+                                 options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
+                                 runtime: String = "") = {
     BackendWorkflowDescriptor(
       WorkflowId.randomId(),
       WdlNamespaceWithWorkflow.load(workflowSource.replaceAll("RUNTIME", runtime),
@@ -40,12 +46,35 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
     )
   }
 
-  def fqnMapToDeclarationMap(m: Map[String, WdlValue]): Map[InputDefinition, WdlValue] = {
+  def buildWdlWorkflowDescriptor(workflowSource: WorkflowSource,
+                              inputs: Map[FullyQualifiedName, WdlValue] = Map.empty,
+                              options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
+                              runtime: String = "") = {
+    val womInputs: Map[OutputPort, ResolvedWorkflowInput] = inputs map {
+      case (fqn, wdlValue) => GraphNodeOutputPort(fqn, WdlAnyType, null) -> Coproduct[ResolvedWorkflowInput](wdlValue)
+    }
+    
+    buildWorkflowDescriptor(workflowSource, womInputs, options, runtime)
+  }
+
+  def fqnWdlMapToDeclarationMap(m: Map[String, WdlValue]): Map[InputDefinition, WdlValue] = {
     m map {
       case (fqn, v) =>
         // TODO WOM: FIXME
         val mockDeclaration = RequiredInputDefinition(fqn, v.wdlType)
         mockDeclaration -> v
+    }
+  }
+
+  def fqnMapToDeclarationMap(m: Map[OutputPort, ResolvedWorkflowInput]): Map[InputDefinition, WdlValue] = {
+    m map {
+      case (outputPort, v) =>
+        // TODO WOM: FIXME
+        v.select[WdlValue] map { wdlValue => 
+          RequiredInputDefinition(outputPort.name, wdlValue.wdlType) -> wdlValue 
+        } getOrElse {
+          throw new IllegalArgumentException("Test doesn't support input expressions, give a WdlValue instead !")
+        }
     }
   }
 
@@ -57,7 +86,7 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
     val jobKey = BackendJobDescriptorKey(call, None, 1)
     val inputDeclarations: Map[InputDefinition, WdlValue] = call.callable.inputs map {
       case required: RequiredInputDefinition => required -> inputs(required.name)
-      case optionalWithDefault: OptionalInputDefinitionWithDefault => 
+      case optionalWithDefault: InputDefinitionWithDefault => 
         val value: WdlValue = inputs.getOrElse(
           optionalWithDefault.name, optionalWithDefault.default.evaluateValue(inputs, NoIoFunctionSet)
           .getOrElse(fail(s"Can't evaluate input ${optionalWithDefault.name}")))
@@ -72,7 +101,7 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
   def jobDescriptorFromSingleCallWorkflow(wdl: WorkflowSource,
                                           options: WorkflowOptions,
                                           runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition]): BackendJobDescriptor = {
-    val workflowDescriptor = buildWorkflowDescriptor(wdl)
+    val workflowDescriptor = buildWdlWorkflowDescriptor(wdl)
     val call = workflowDescriptor.workflow.innerGraph.nodes.collectFirst({ case t: TaskCallNode => t}).get
     val jobKey = BackendJobDescriptorKey(call, None, 1)
     val inputDeclarations = fqnMapToDeclarationMap(workflowDescriptor.knownValues)
@@ -86,7 +115,7 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
                                           attempt: Int,
                                           options: WorkflowOptions,
                                           runtimeAttributeDefinitions: Set[RuntimeAttributeDefinition]): BackendJobDescriptor = {
-    val workflowDescriptor = buildWorkflowDescriptor(wdl, runtime = runtime)
+    val workflowDescriptor = buildWdlWorkflowDescriptor(wdl, runtime = runtime)
     val call = workflowDescriptor.workflow.innerGraph.nodes.collectFirst({ case t: TaskCallNode => t}).get
     val jobKey = BackendJobDescriptorKey(call, None, attempt)
     val inputDeclarations = fqnMapToDeclarationMap(workflowDescriptor.knownValues)
@@ -130,11 +159,6 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
   def firstJobDescriptorKey(workflowDescriptor: BackendWorkflowDescriptor): BackendJobDescriptorKey = {
     val call = workflowDescriptor.workflow.innerGraph.nodes.collectFirst({ case t: TaskCallNode => t}).get
     BackendJobDescriptorKey(call, None, 1)
-  }
-
-  def firstJobDescriptor(workflowDescriptor: BackendWorkflowDescriptor,
-                         inputs: Map[String, WdlValue] = Map.empty) = {
-    BackendJobDescriptor(workflowDescriptor, firstJobDescriptorKey(workflowDescriptor), Map.empty, fqnMapToDeclarationMap(inputs), NoDocker, Map.empty)
   }
 }
 
