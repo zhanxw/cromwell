@@ -10,7 +10,7 @@ import wdl4s.wom.expression.{IoFunctionSet, WomExpression}
 import wdl4s.wom.graph.GraphNodePort.OutputPort
 
 object InputPointerToWdlValue extends Poly1 {
-  // Function that can transform any of the coproduct types to a ErrorOr[WdlValue]
+  // Function that can transform any of the coproduct types to an ErrorOr[WdlValue]
   type ToWdlValueFn = (Map[String, WdlValue], IoFunctionSet, OutputStore, ExecutionIndex) => ErrorOr[WdlValue]
 
   implicit def fromWdlValue: Case.Aux[WdlValue, ToWdlValueFn] = at[WdlValue] {

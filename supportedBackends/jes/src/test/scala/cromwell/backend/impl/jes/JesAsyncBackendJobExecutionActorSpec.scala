@@ -76,7 +76,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
        |}
     """.stripMargin
 
-  val Inputs = Map("sup.sup.addressee" -> WdlString("dog"))
+  val Inputs = Map("wf_sup.sup.addressee" -> WdlString("dog"))
 
   val NoOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue]))
 
@@ -146,7 +146,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val attempt = previousPreemptions + previousUnexpectedRetries + 1
     val womDefinition = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", s"preemptible: $preemptible"),
       Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
-    val resolvedWorkflowInputs = womDefinition.innerGraph.validateWorkflowInputs(Inputs).getOrElse(fail("Can't validate inputs"))
+    val resolvedWorkflowInputs = womDefinition.innerGraph.validateWorkflowInputs(Inputs).valueOr(errors => fail(s"Can't validate inputs: ${errors.toList.mkString(", ")}"))
 
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),

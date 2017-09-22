@@ -7,10 +7,11 @@ import cromwell.backend.async.{ExecutionHandle, FailedNonRetryableExecutionHandl
 import cromwell.backend.io.JobPathsWithDocker
 import cromwell.backend.standard.{StandardAsyncExecutionActor, StandardAsyncJob}
 import cromwell.backend.validation._
+import cromwell.core.CromwellGraphNode._
 import cromwell.core.path.{DefaultPathBuilder, Path}
 import cromwell.core.retry.SimpleExponentialBackoff
+import lenthall.Checked
 import wdl4s.wdl.values.WdlFile
-import cromwell.core.CromwellGraphNode._
 
 import scala.concurrent.duration._
 
@@ -121,21 +122,23 @@ trait SharedFileSystemAsyncJobExecutionActor
 
   override def execute(): ExecutionHandle = {
     jobPaths.callExecutionRoot.createPermissionedDirectories()
-    writeScriptContents()
-    val runner = makeProcessRunner()
-    val exitValue = runner.run()
-    if (exitValue != 0) {
-      FailedNonRetryableExecutionHandle(new RuntimeException("Unable to start job. " +
-        s"Check the stderr file for possible errors: ${runner.stderrPath}"))
-    } else {
-      val runningJob = getJob(exitValue, runner.stdoutPath, runner.stderrPath)
-      PendingExecutionHandle(jobDescriptor, runningJob, None, None)
+    writeScriptContents() match {
+      case Left(errors) => FailedNonRetryableExecutionHandle(new Exception(errors.toList.mkString(", ")))
+      case Right(_) =>
+        val runner = makeProcessRunner()
+        val exitValue = runner.run()
+        if (exitValue != 0) {
+          FailedNonRetryableExecutionHandle(new RuntimeException("Unable to start job. " +
+            s"Check the stderr file for possible errors: ${runner.stderrPath}"))
+        } else {
+          val runningJob = getJob(exitValue, runner.stdoutPath, runner.stderrPath)
+          PendingExecutionHandle(jobDescriptor, runningJob, None, None)
+        }
     }
   }
 
-  def writeScriptContents(): Unit = {
-    jobPaths.script.write(commandScriptContents)
-    ()
+  def writeScriptContents(): Checked[Unit] = {
+    commandScriptContents map jobPaths.script.write map { _ => () }
   }
 
   /**

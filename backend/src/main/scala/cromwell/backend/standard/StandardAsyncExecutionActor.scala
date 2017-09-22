@@ -18,6 +18,7 @@ import cromwell.core.{CallOutputs, CromwellAggregatedException, CromwellFatalExc
 import cromwell.services.keyvalue.KeyValueServiceActor._
 import cromwell.services.keyvalue.KvClient
 import cromwell.services.metadata.CallMetadataKeys
+import lenthall.Checked
 import lenthall.util.TryUtil
 import net.ceedubs.ficus.Ficus._
 import wdl4s.wdl.values._
@@ -175,33 +176,33 @@ trait StandardAsyncExecutionActor extends AsyncBackendJobExecutionActor with Sta
   def commandScriptPreamble: String = ""
 
   /** A bash script containing the custom preamble, the instantiated command, and output globbing behavior. */
-  def commandScriptContents: String = {
+  def commandScriptContents: Checked[String] = {
     jobLogger.info(s"`$instantiatedCommand`")
 
     val cwd = commandDirectory
     val rcPath = cwd./(jobPaths.returnCodeFilename)
     val rcTmpPath = rcPath.plusExt("tmp")
 
-    val globFiles = backendEngineFunctions.findGlobOutputs(call, jobDescriptor)
-
-    s"""|#!/bin/bash
-        |tmpDir=$$(mktemp -d $cwd/tmp.XXXXXX)
-        |chmod 777 $$tmpDir
-        |export _JAVA_OPTIONS=-Djava.io.tmpdir=$$tmpDir
-        |export TMPDIR=$$tmpDir
-        |$commandScriptPreamble
-        |(
-        |cd $cwd
-        |INSTANTIATED_COMMAND
-        |)
-        |echo $$? > $rcTmpPath
-        |(
-        |cd $cwd
-        |${globManipulations(globFiles)}
-        |)
-        |SCRIPT_EPILOGUE
-        |mv $rcTmpPath $rcPath
-        |""".stripMargin.replace("INSTANTIATED_COMMAND", instantiatedCommand).replace("SCRIPT_EPILOGUE", scriptEpilogue)
+    backendEngineFunctions.findGlobOutputs(call, jobDescriptor) map { globFiles =>
+      s"""|#!/bin/bash
+          |tmpDir=$$(mktemp -d $cwd/tmp.XXXXXX)
+          |chmod 777 $$tmpDir
+          |export _JAVA_OPTIONS=-Djava.io.tmpdir=$$tmpDir
+          |export TMPDIR=$$tmpDir
+          |$commandScriptPreamble
+          |(
+          |cd $cwd
+          |INSTANTIATED_COMMAND
+          |)
+          |echo $$? > $rcTmpPath
+          |(
+          |cd $cwd
+          |${globManipulations(globFiles)}
+          |)
+          |SCRIPT_EPILOGUE
+          |mv $rcTmpPath $rcPath
+          |""".stripMargin.replace("INSTANTIATED_COMMAND", instantiatedCommand).replace("SCRIPT_EPILOGUE", scriptEpilogue)
+    }
   }
 
   /** The instantiated command. */

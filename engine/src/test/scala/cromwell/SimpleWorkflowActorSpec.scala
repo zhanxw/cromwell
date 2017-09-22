@@ -107,7 +107,7 @@ class SimpleWorkflowActorSpec extends CromwellTestKitWordSpec with BeforeAndAfte
     }
 
     "fail to construct with inputs of the wrong type" in {
-      val expectedError = "Could not coerce JsNumber value for 'wf_hello.hello.addressee' (3) into: WdlStringType"
+      val expectedError = "No coercion defined from '3' of type 'spray.json.JsNumber' to 'String'."
       val failureMatcher = FailureMatcher(expectedError)
       val TestableWorkflowActorAndMetadataPromise(workflowActor, supervisor, promise) = buildWorkflowActor(SampleWdl.HelloWorld, s""" { "$Addressee" : 3} """,
         workflowId, failureMatcher)

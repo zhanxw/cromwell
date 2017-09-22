@@ -7,6 +7,7 @@ import wdl4s.wom.expression.IoFunctionSet
 import wdl4s.wom.graph.TaskCallNode
 import cats.instances.list._
 import cats.syntax.traverse._
+import lenthall.Checked
 import lenthall.validation.ErrorOr.ErrorOr
 import wdl4s.wdl.types.WdlAnyType
 
@@ -14,12 +15,12 @@ trait GlobFunctions extends IoFunctionSet {
 
   def callContext: CallContext
 
-  def findGlobOutputs(call: TaskCallNode, jobDescriptor: BackendJobDescriptor): ErrorOr[List[WdlGlobFile]] = {
+  def findGlobOutputs(call: TaskCallNode, jobDescriptor: BackendJobDescriptor): Checked[List[WdlGlobFile]] = {
     call.callable.outputs.flatTraverse[ErrorOr, WdlGlobFile] {
       _.expression.evaluateFiles(jobDescriptor.fullyQualifiedInputs, this, WdlAnyType) map {
         _.toList collect { case glob: WdlGlobFile => glob }
       }
-    }
+    }.toEither
   }
 
   def globDirectory(glob: String): String = globName(glob) + "/"

@@ -321,7 +321,10 @@ class JesAsyncBackendJobExecutionActor(override val standardParams: StandardAsyn
       standardParameters ++ gcsAuthParameter ++ jesInputs ++ jesOutputs
     })
 
-    def uploadScriptFile = writeAsync(jobPaths.script, commandScriptContents, Seq(CloudStorageOptions.withMimeType("text/plain")))
+    def uploadScriptFile = commandScriptContents match {
+      case Right(scriptContent) => writeAsync(jobPaths.script, scriptContent, Seq(CloudStorageOptions.withMimeType("text/plain")))
+      case Left(errors) => Future.failed(new Exception(errors.toList.mkString(", ")))
+    }
 
     def makeRpr(jesParameters: Seq[JesParameter]) = Future.fromTry(Try {
       createJesRunPipelineRequest(jesParameters)

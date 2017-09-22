@@ -2,14 +2,16 @@ package cromwell.backend.sfs
 
 import cromwell.backend.standard.StandardAsyncJob
 import cromwell.core.path.Path
+import lenthall.Checked
 
 trait BackgroundAsyncJobExecutionActor extends SharedFileSystemAsyncJobExecutionActor {
 
   lazy val backgroundScript = jobPaths.script.plusExt("background")
 
-  override def writeScriptContents(): Unit = {
-    super.writeScriptContents()
-    writeBackgroundScriptContents()
+  override def writeScriptContents(): Checked[Unit] = {
+    super.writeScriptContents() map { _ =>
+      writeBackgroundScriptContents()
+    }
   }
 
   /**

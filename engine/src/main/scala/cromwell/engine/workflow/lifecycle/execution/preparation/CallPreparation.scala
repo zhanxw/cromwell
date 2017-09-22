@@ -31,6 +31,7 @@ object CallPreparation {
 
     callKey.node.inputDefinitionMappings.foldLeft(Map.empty[InputDefinition, ErrorOr[WdlValue]]) {
       case (accumulatedInputsSoFar, (inputDefinition, pointer)) =>
+        // We could have a lenthall method for this kind of "filtering valid values"
         val validInputsAccumulated: Map[String, WdlValue] = accumulatedInputsSoFar.collect({
           case (input, Valid(errorOrWdlValue)) => input.name -> errorOrWdlValue
         })

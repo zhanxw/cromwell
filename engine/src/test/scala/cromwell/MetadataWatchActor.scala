@@ -18,6 +18,7 @@ final case class MetadataWatchActor(promise: Promise[Unit], matchers: Matcher*) 
 
   override def receive = {
     case PutMetadataAction(events) if unsatisfiedMatchers.nonEmpty =>
+      println(events.map(_.value.map(_.value)))
       unsatisfiedMatchers = unsatisfiedMatchers.filterNot { m => m.matches(events) }
       if (unsatisfiedMatchers.isEmpty) {
         promise.trySuccess(())
