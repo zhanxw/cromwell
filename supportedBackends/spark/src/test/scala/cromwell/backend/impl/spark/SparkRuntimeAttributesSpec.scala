@@ -4,12 +4,12 @@ import cromwell.backend.validation.RuntimeAttributesKeys._
 import cromwell.backend.{BackendWorkflowDescriptor, MemorySize}
 import cromwell.core.labels.Labels
 import cromwell.core.{NoIoFunctionSet, WorkflowId, WorkflowOptions}
+import lenthall.validation.ErrorOr._
 import org.scalatest.{Matchers, WordSpecLike}
 import spray.json.{JsBoolean, JsNumber, JsObject, JsValue}
 import wdl4s.wdl._
 import wdl4s.wdl.values.WdlValue
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
-import wdl4s.wom.graph.GraphNodePort.OutputPort
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
 
 class SparkRuntimeAttributesSpec extends WordSpecLike with Matchers {
 
@@ -85,7 +85,7 @@ class SparkRuntimeAttributesSpec extends WordSpecLike with Matchers {
   }
 
   private def buildWorkflowDescriptor(wdl: WorkflowSource,
-                                      inputs: Map[OutputPort, ResolvedWorkflowInput] = Map.empty,
+                                      inputs: ResolvedExecutableInputs = Map.empty,
                                       options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
                                       runtime: String) = {
     BackendWorkflowDescriptor(
@@ -98,8 +98,7 @@ class SparkRuntimeAttributesSpec extends WordSpecLike with Matchers {
     )
   }
 
-  private def createRuntimeAttributes(workflowSource: WorkflowSource, runtimeAttributes: String): List[Map[String, WdlValue]] = {
-    import lenthall.validation.ErrorOr._  
+  private def createRuntimeAttributes(workflowSource: WorkflowSource, runtimeAttributes: String): List[Map[String, WdlValue]] = {  
     val workflowDescriptor = buildWorkflowDescriptor(workflowSource, runtime = runtimeAttributes)
 
     workflowDescriptor.workflow.taskCallNodes.toList map {

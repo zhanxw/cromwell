@@ -11,8 +11,7 @@ import wdl4s.wdl._
 import wdl4s.wdl.values.WdlValue
 import wdl4s.wom.WomEvaluatedCallInputs
 import wdl4s.wom.callable.WorkflowDefinition
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
-import wdl4s.wom.graph.GraphNodePort.OutputPort
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
 import wdl4s.wom.graph.TaskCallNode
 
 import scala.util.Try
@@ -46,7 +45,7 @@ case class BackendJobDescriptor(workflowDescriptor: BackendWorkflowDescriptor,
 object BackendWorkflowDescriptor {
   def apply(id: WorkflowId,
             workflow: WorkflowDefinition,
-            knownValues: Map[OutputPort, ResolvedWorkflowInput],
+            knownValues: ResolvedExecutableInputs,
             workflowOptions: WorkflowOptions,
             customLabels: Labels) = {
     new BackendWorkflowDescriptor(id, workflow, knownValues, workflowOptions, customLabels, List.empty)
@@ -58,7 +57,7 @@ object BackendWorkflowDescriptor {
   */
 case class BackendWorkflowDescriptor(id: WorkflowId,
                                      workflow: WorkflowDefinition,
-                                     knownValues: Map[OutputPort, ResolvedWorkflowInput],
+                                     knownValues: ResolvedExecutableInputs,
                                      workflowOptions: WorkflowOptions,
                                      customLabels: Labels,
                                      breadCrumbs: List[BackendJobBreadCrumb]) {

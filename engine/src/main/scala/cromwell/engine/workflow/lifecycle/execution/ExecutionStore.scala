@@ -8,8 +8,7 @@ import cromwell.engine.workflow.lifecycle.execution.ExecutionStore.{FqnIndex, Ru
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.{apply => _, _}
 import wdl4s.wdl._
 import wdl4s.wom.callable.WorkflowDefinition
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
-import wdl4s.wom.graph.GraphNodePort.OutputPort
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
 import wdl4s.wom.graph._
 
 
@@ -20,7 +19,7 @@ object ExecutionStore {
 
   def empty = ExecutionStore(Map.empty[JobKey, ExecutionStatus], hasNewRunnables = false)
 
-  def apply(workflow: WorkflowDefinition, workflowCoercedInputs: Map[OutputPort, ResolvedWorkflowInput]) = {
+  def apply(workflow: WorkflowDefinition, workflowCoercedInputs: ResolvedExecutableInputs) = {
     // Only add direct children to the store, the rest is dynamically created when necessary
 //    val keys = workflow.children map {
 //      case call: WdlTaskCall => Option(BackendJobDescriptorKey(call, None, 1))

@@ -25,17 +25,17 @@ import cromwell.core.path.{DefaultPathBuilder, PathBuilder}
 import cromwell.filesystems.gcs.{GcsPath, GcsPathBuilder, GcsPathBuilderFactory}
 import cromwell.services.keyvalue.InMemoryKvServiceActor
 import cromwell.services.keyvalue.KeyValueServiceActor.{KvJobKey, KvPair, ScopedKey}
+import cromwell.util.JsonFormatting.WdlValueJsonFormatter._
 import cromwell.util.SampleWdl
 import org.scalatest._
 import org.scalatest.prop.Tables.Table
 import org.slf4j.Logger
 import org.specs2.mock.Mockito
-import spray.json.{JsObject, JsValue}
+import spray.json._
 import wdl4s.wdl._
 import wdl4s.wdl.types.{WdlArrayType, WdlFileType, WdlMapType, WdlStringType}
 import wdl4s.wdl.values.{WdlArray, WdlFile, WdlMap, WdlString, WdlValue}
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
-import wdl4s.wom.graph.GraphNodePort.OutputPort
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
 import wdl4s.wom.graph.TaskCallNode
 
 import scala.concurrent.duration._
@@ -44,8 +44,8 @@ import scala.language.postfixOps
 import scala.util.Success
 
 class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackendJobExecutionActorSpec")
-  with FlatSpecLike with Matchers with ImplicitSender with Mockito with BackendSpec with BeforeAndAfter {
-
+  with FlatSpecLike with Matchers with ImplicitSender with Mockito with BackendSpec with BeforeAndAfter with DefaultJsonProtocol {
+  
   val mockPathBuilder: GcsPathBuilder = GcsPathBuilder.fromCredentials(NoCredentials.getInstance(),
     "test-cromwell", None, GcsPathBuilderFactory.DefaultCloudStorageConfiguration, WorkflowOptions.empty)
 
@@ -76,7 +76,7 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
        |}
     """.stripMargin
 
-  val Inputs = Map("wf_sup.sup.addressee" -> WdlString("dog"))
+  val Inputs: Map[FullyQualifiedName, WdlValue] = Map("wf_sup.sup.addressee" -> WdlString("dog"))
 
   val NoOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue]))
 
@@ -144,9 +144,14 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
 
   private def buildPreemptibleJobDescriptor(preemptible: Int, previousPreemptions: Int, previousUnexpectedRetries: Int): BackendJobDescriptor = {
     val attempt = previousPreemptions + previousUnexpectedRetries + 1
-    val womDefinition = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", s"preemptible: $preemptible"),
-      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
-    val resolvedWorkflowInputs = womDefinition.innerGraph.validateWorkflowInputs(Inputs).valueOr(errors => fail(s"Can't validate inputs: ${errors.toList.mkString(", ")}"))
+    val wdlNamespace = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", s"preemptible: $preemptible"),
+      Seq.empty[ImportResolver]).get
+    val womDefinition = wdlNamespace.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = wdlNamespace.womExecutable.getOrElse(fail("Can't build wom executable"))
+    val resolvedWorkflowInputs = womExecutable.validateWorkflowInputs(Inputs.toJson.compactPrint) match {
+      case Left(errors) => fail(s"Can't validate inputs: ${errors.toList.mkString(", ")}")
+      case Right(inputs) => inputs
+    }
 
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
@@ -338,16 +343,18 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     val gcsFileKey = "gcsf"
     val gcsFileVal = WdlFile("gs://blah/abc")
 
-    val inputs = Map(
+    val inputs: Map[String, WdlValue] = Map(
       stringKey -> stringVal,
       localFileKey -> localFileVal,
       gcsFileKey -> gcsFileVal
     )
 
-    val womWorkflow = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", ""),
-      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val wdlNamespace = WdlNamespaceWithWorkflow.load(YoSup.replace("[PREEMPTIBLE]", ""),
+      Seq.empty[ImportResolver]).get
+    val womWorkflow = wdlNamespace.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = wdlNamespace.womExecutable.getOrElse(fail("failed to build wom executable"))
     
-    val resolvedWorkflowInputs: Map[OutputPort, ResolvedWorkflowInput] = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    val resolvedWorkflowInputs: ResolvedExecutableInputs = womExecutable.validateWorkflowInputs(inputs.toJson.compactPrint).getOrElse(fail("failed to validate inputs"))
     
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
@@ -389,8 +396,11 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
     }
   }
 
+  private val dockerAndDiskWdlNamespace = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
+    Seq.empty[ImportResolver]).get
+  
   it should "generate correct JesFileInputs from a WdlMap" taggedAs PostWomTest ignore {
-    val inputs = Map(
+    val inputs: Map[String, WdlValue] = Map(
       "stringToFileMap" -> WdlMap(WdlMapType(WdlStringType, WdlFileType), Map(
         WdlString("stringTofile1") -> WdlFile("gs://path/to/stringTofile1"),
         WdlString("stringTofile2") -> WdlFile("gs://path/to/stringTofile2")
@@ -409,10 +419,10 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
       ))
     )
 
-    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womWorkflow = dockerAndDiskWdlNamespace.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = dockerAndDiskWdlNamespace.womExecutable.getOrElse(fail("failed to build wom executable"))
 
-    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    val resolvedWorkflowInputs = womExecutable.validateWorkflowInputs(inputs.toJson.compactPrint).getOrElse(fail("failed to validate inputs"))
     
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
@@ -456,8 +466,9 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   TestActorRef[TestableJesJobExecutionActor] = {
     val womWorkflow = WdlNamespaceWithWorkflow.load(sampleWdl.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
       Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = dockerAndDiskWdlNamespace.womExecutable.getOrElse(fail("failed to build wom executable"))
 
-    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    val resolvedWorkflowInputs = womExecutable.validateWorkflowInputs(inputs.toJson.compactPrint).getOrElse(fail("failed to validate inputs"))
     
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
@@ -515,15 +526,14 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   }
 
   it should "generate correct JesFileInputs from a WdlArray" taggedAs PostWomTest ignore {
-    val inputs = Map(
+    val inputs: Map[String, WdlValue] = Map(
       "fileArray" ->
         WdlArray(WdlArrayType(WdlFileType), Seq(WdlFile("gs://path/to/file1"), WdlFile("gs://path/to/file2")))
     )
 
-    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
-
-    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    val womWorkflow = dockerAndDiskWdlNamespace.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = dockerAndDiskWdlNamespace.womExecutable.getOrElse(fail("failed to build wom executable"))
+    val resolvedWorkflowInputs = womExecutable.validateWorkflowInputs(inputs.toJson.compactPrint).getOrElse(fail("failed to validate inputs"))
 
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),
@@ -549,15 +559,14 @@ class JesAsyncBackendJobExecutionActorSpec extends TestKitSuite("JesAsyncBackend
   }
 
   it should "generate correct JesFileInputs from a WdlFile" taggedAs PostWomTest ignore {
-    val inputs = Map(
+    val inputs: Map[String, WdlValue] = Map(
       "file1" -> WdlFile("gs://path/to/file1"),
       "file2" -> WdlFile("gs://path/to/file2")
     )
 
-    val womWorkflow = WdlNamespaceWithWorkflow.load(SampleWdl.CurrentDirectory.asWorkflowSources(DockerAndDiskRuntime).workflowSource,
-      Seq.empty[ImportResolver]).get.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
-
-    val resolvedWorkflowInputs = womWorkflow.innerGraph.validateWorkflowInputs(inputs).getOrElse(fail("failed to validate inputs"))
+    val womWorkflow = dockerAndDiskWdlNamespace.workflow.womDefinition.getOrElse(fail("failed to get WomDefinition from WdlWorkflow"))
+    val womExecutable = dockerAndDiskWdlNamespace.womExecutable.getOrElse(fail("failed to build wom executable"))
+    val resolvedWorkflowInputs = womExecutable.validateWorkflowInputs(inputs.toJson.compactPrint).getOrElse(fail("failed to validate inputs"))
     
     val workflowDescriptor = BackendWorkflowDescriptor(
       WorkflowId.randomId(),

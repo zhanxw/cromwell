@@ -16,8 +16,9 @@ import wdl4s.wdl._
 import wdl4s.wdl.types.WdlAnyType
 import wdl4s.wdl.values.{WdlOptionalValue, WdlValue}
 import wdl4s.wom.callable.Callable.{InputDefinition, InputDefinitionWithDefault, OptionalInputDefinition, RequiredInputDefinition}
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
-import wdl4s.wom.graph.GraphNodePort.{GraphNodeOutputPort, OutputPort}
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
+import wdl4s.wom.graph.Graph.ResolvedExecutableInput
+import wdl4s.wom.graph.GraphNodePort.GraphNodeOutputPort
 import wdl4s.wom.graph.TaskCallNode
 
 import scala.language.postfixOps
@@ -33,7 +34,7 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
 
   
   def buildWorkflowDescriptor(workflowSource: WorkflowSource,
-                                 inputs: Map[OutputPort, ResolvedWorkflowInput] = Map.empty,
+                                 inputs: ResolvedExecutableInputs = Map.empty,
                                  options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
                                  runtime: String = "") = {
     BackendWorkflowDescriptor(
@@ -50,8 +51,8 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
                               inputs: Map[FullyQualifiedName, WdlValue] = Map.empty,
                               options: WorkflowOptions = WorkflowOptions(JsObject(Map.empty[String, JsValue])),
                               runtime: String = "") = {
-    val womInputs: Map[OutputPort, ResolvedWorkflowInput] = inputs map {
-      case (fqn, wdlValue) => GraphNodeOutputPort(fqn, WdlAnyType, null) -> Coproduct[ResolvedWorkflowInput](wdlValue)
+    val womInputs: ResolvedExecutableInputs = inputs map {
+      case (fqn, wdlValue) => GraphNodeOutputPort(fqn, WdlAnyType, null) -> Coproduct[ResolvedExecutableInput](wdlValue)
     }
     
     buildWorkflowDescriptor(workflowSource, womInputs, options, runtime)
@@ -66,7 +67,7 @@ trait BackendSpec extends ScalaFutures with Matchers with Mockito {
     }
   }
 
-  def fqnMapToDeclarationMap(m: Map[OutputPort, ResolvedWorkflowInput]): Map[InputDefinition, WdlValue] = {
+  def fqnMapToDeclarationMap(m: ResolvedExecutableInputs): Map[InputDefinition, WdlValue] = {
     m map {
       case (outputPort, v) =>
         // TODO WOM: FIXME

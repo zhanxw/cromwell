@@ -25,6 +25,7 @@ import cromwell.engine.backend.CromwellBackends
 import cromwell.engine.workflow.lifecycle.MaterializeWorkflowDescriptorActor.MaterializeWorkflowDescriptorActorState
 import cromwell.services.metadata.MetadataService._
 import cromwell.services.metadata.{MetadataEvent, MetadataKey, MetadataValue}
+import lenthall.Checked
 import lenthall.exception.{AggregatedMessageException, MessageAggregation}
 import lenthall.validation.ErrorOr._
 import net.ceedubs.ficus.Ficus._
@@ -34,8 +35,8 @@ import wdl4s.wdl._
 import wdl4s.wdl.values.{WdlSingleFile, WdlString, WdlValue}
 import wdl4s.wom.callable.WorkflowDefinition
 import wdl4s.wom.executable.Executable
+import wdl4s.wom.executable.Executable.ResolvedExecutableInputs
 import wdl4s.wom.expression.WomExpression
-import wdl4s.wom.graph.Graph.ResolvedWorkflowInput
 import wdl4s.wom.graph.GraphNodePort.OutputPort
 import wdl4s.wom.graph.{Graph, TaskCallNode}
 
@@ -90,7 +91,7 @@ object MaterializeWorkflowDescriptorActor {
   /*
     * Internal ADT
    */
-  private case class ValidatedWomNamespace(executable: Executable, graph: Graph, evaluatedWorkflowValues: Map[OutputPort, ResolvedWorkflowInput]) {
+  private case class ValidatedWomNamespace(executable: Executable, graph: Graph, evaluatedWorkflowValues: ResolvedExecutableInputs) {
     
     lazy val wdlValueInputs: Map[OutputPort, WdlValue] = evaluatedWorkflowValues flatMap {
       case (outputPort, resolvedInput) => resolvedInput.select[WdlValue] map { outputPort -> _ }
@@ -430,13 +431,13 @@ class MaterializeWorkflowDescriptorActor(serviceRegistryActor: ActorRef,
     val cwlFile = File.newTemporaryFile(prefix = workflowIdForLogging.toString).write(source.workflowSource)
 
     try {
-      for {
+      (for {
         wf <- CwlDecoder.decodeAllCwl(cwlFile).map {
           _.select[Workflow].get
-        }.value.unsafeRunSync.toValidated
-        womExecutable <- wf.womExecutable.toValidated
+        }.value.unsafeRunSync
+        womExecutable <- wf.womExecutable
         validatedWomNamespace <- validateWomNamespace(womExecutable, source.inputsJson)
-      } yield validatedWomNamespace
+      } yield validatedWomNamespace).toValidated
     } finally {
       cwlFile.delete(swallowIOExceptions = true)
     }
@@ -447,19 +448,23 @@ class MaterializeWorkflowDescriptorActor(serviceRegistryActor: ActorRef,
                                    workflowOptions: WorkflowOptions,
                                    pathBuilders: List[PathBuilder]): ErrorOr[ValidatedWomNamespace] = {
     import cats.instances.list._
+    import cats.instances.either._
+    import cats.syntax.either._
     import cats.syntax.functor._
+    import cats.syntax.validated._
+    import lenthall.validation.Checked._
 
-    def checkTypes(namespace: WdlNamespaceWithWorkflow, inputs: Map[OutputPort, WdlValue]): ErrorOr[Unit] = {
+    def checkTypes(namespace: WdlNamespaceWithWorkflow, inputs: Map[OutputPort, WdlValue]): Checked[Unit] = {
       val allDeclarations = namespace.workflow.declarations ++ namespace.workflow.calls.flatMap(_.declarations)
-      val list: List[ErrorOr[Unit]] = inputs.map({ case (k, v) =>
+      val list: List[Checked[Unit]] = inputs.map({ case (k, v) =>
         allDeclarations.find(_.fullyQualifiedName == k) match {
           case Some(decl) if decl.wdlType.coerceRawValue(v).isFailure =>
-            s"Invalid right-side type of '$k'.  Expecting ${decl.wdlType.toWdlString}, got ${v.wdlType.toWdlString}".invalidNel
-          case _ => ().validNel[String]
+            s"Invalid right-side type of '$k'.  Expecting ${decl.wdlType.toWdlString}, got ${v.wdlType.toWdlString}".invalidNelCheck[Unit]
+          case _ => ().validNelCheck
         }
       }).toList
 
-      list.sequence[ErrorOr, Unit].void
+      list.sequence[Checked, Unit].void
     }
 
     val wdlNamespaceValidation = source match {
@@ -476,30 +481,21 @@ class MaterializeWorkflowDescriptorActor(serviceRegistryActor: ActorRef,
         }
     }
 
-    for {
-      wdlNamespace <- wdlNamespaceValidation
-      womExecutable <- wdlNamespace.womExecutable
+    (for {
+      wdlNamespace <- wdlNamespaceValidation.toEither
+      womExecutable <- wdlNamespace.womExecutable.toEither
       validatedWomNamespace <- validateWomNamespace(womExecutable, source.inputsJson)
       _ <- checkTypes(wdlNamespace, validatedWomNamespace.wdlValueInputs)
       _ = pushWfInputsToMetadataService(validatedWomNamespace.wdlValueInputs)
-    } yield validatedWomNamespace
+    } yield validatedWomNamespace).toValidated
   }
 
-  private def validateWomNamespace(womExecutable: Executable, workflowJson: WorkflowJson) = for {
-    rawInputs <- validateRawInputs(workflowJson)
-    graph <- womExecutable.graph
-    inputs <- womExecutable.validateWorkflowInputs(rawInputs)
+  private def validateWomNamespace(womExecutable: Executable, workflowInputContent: WorkflowJson): Checked[ValidatedWomNamespace] = for {
+    graph <- womExecutable.graph.toEither
+    inputs <- womExecutable.validateWorkflowInputs(workflowInputContent)
     validatedWomNamespace = ValidatedWomNamespace(womExecutable, graph, inputs)
     _ <- validateWdlFiles(validatedWomNamespace.wdlValueInputs)
   } yield validatedWomNamespace
-
-  private def validateRawInputs(json: WorkflowJson): ErrorOr[Map[String, JsValue]] = {
-    Try(json.parseJson) match {
-      case Success(JsObject(inputs)) => inputs.validNel
-      case Failure(reason: Throwable) => s"Workflow contains invalid inputs JSON: ${reason.getMessage}".invalidNel
-      case _ => s"Workflow inputs JSON cannot be parsed to JsObject: $json".invalidNel
-    }
-  }
 
   private def validateLabels(json: WorkflowJson): ErrorOr[Labels] = {
 
@@ -519,14 +515,14 @@ class MaterializeWorkflowDescriptorActor(serviceRegistryActor: ActorRef,
     }
   }
 
-  private def validateWdlFiles(workflowInputs: Map[OutputPort, WdlValue]): ErrorOr[Unit] = {
+  private def validateWdlFiles(workflowInputs: Map[OutputPort, WdlValue]): Checked[Unit] = {
     val failedFiles = workflowInputs collect {
       case (port , WdlSingleFile(value)) if value.startsWith("\"gs://") => s"""Invalid value for File input '${port.name}': $value starts with a '\"' """
     }
 
     NonEmptyList.fromList(failedFiles.toList) match {
-      case Some(errors) => Invalid(errors)
-      case None => ().validNel
+      case Some(errors) => Left(errors)
+      case None => Right(())
     }
   }
 
