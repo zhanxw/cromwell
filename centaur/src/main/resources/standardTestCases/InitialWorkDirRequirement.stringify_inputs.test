@@ -1,0 +1,16 @@
+name: iwdr_stringify_inputs
+testFormat: workflowsuccess
+workflowType: CWL
+workflowRoot: stringify_inputs
+workflowTypeVersion: v1.0
+ignore: true #  Depends on #3090
+
+files {
+  wdl: InitialWorkDirRequirement/stringify_inputs.cwl
+}
+
+metadata {
+  "submittedFiles.workflowType": CWL
+  "submittedFiles.workflowTypeVersion": v1.0
+  "outputs.stringify_inputs.number_field_output": '"number": 27'
+}
