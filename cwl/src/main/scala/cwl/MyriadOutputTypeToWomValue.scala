@@ -4,6 +4,7 @@ import cats.data.Validated.Valid
 import cats.instances.list._
 import cats.syntax.option._
 import cats.syntax.traverse._
+import cats.syntax.validated._
 import common.validation.ErrorOr.ErrorOr
 import cwl.CwlType.CwlType
 import cwl.MyriadOutputTypeToWomValue.EvaluationFunction
@@ -80,8 +81,13 @@ object MyriadOutputInnerTypeToWomValue extends Poly1 {
     oes.toString |> ex
   }
 
-  implicit def oas: Aux[OutputArraySchema, EvaluationFunction => ErrorOr[WomValue]] = at[OutputArraySchema]{ oas => _ =>
-    oas.toString |> ex
+  implicit def oas: Aux[OutputArraySchema, EvaluationFunction => ErrorOr[WomValue]] = at[OutputArraySchema]{
+    case OutputArraySchema(itemsType, _, _, outputBinding) => 
+      val itemsWomType = itemsType.fold(MyriadOutputTypeToWomType)
+      evalFunction =>
+        def fromBinding = outputBinding.map(evalFunction(_, WomArrayType(itemsWomType)))
+//        def fromTypes = itemsType.fold(MyriadOutputTypeToWomValue).apply(evalFunction)
+        fromBinding.getOrElse("Cannot build output wom value from array without binding".invalidNel)
   }
 
   implicit def s: Aux[String, EvaluationFunction => ErrorOr[WomValue]] = at[String]{ s => _ =>
