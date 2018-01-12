@@ -1,13 +1,10 @@
 package cwl
 
 import cwl.CwlType.CwlType
-import shapeless.Poly1
-import wom.types.{WomArrayType, WomCompositeType, WomType}
-import cats.syntax.foldable._
-import cats.instances.list._
-import cats.instances.set._
 import cwl.command.ParentName
 import mouse.all._
+import shapeless.Poly1
+import wom.types._
 
 object MyriadOutputTypeToWomType extends Poly1{
 
@@ -17,10 +14,18 @@ object MyriadOutputTypeToWomType extends Poly1{
     _.fold(MyriadOutputInnerTypeToWomType)
   }
 
-  implicit def acwl: Aux[Array[MyriadOutputInnerType], WomType] = at[Array[MyriadOutputInnerType]] {
-    _.toList.foldMap(i => Set(i)).map(_.fold(MyriadOutputInnerTypeToWomType)).toList match {
-      case head :: Nil => WomArrayType(head)
-      case _ => throw new RuntimeException("Wom does not provide an array of >1 types")
+  implicit def acwl: Aux[Array[MyriadOutputInnerType], WomType] = at[Array[MyriadOutputInnerType]] { types =>
+    // If one of the type is "null", it means this is an optional type
+    types.partition(_.select[String].contains("null")) match {
+      // If there's no non null type, create a coproduct of the types
+      case (nullTypes, nonNullTypes) if nullTypes.isEmpty =>
+        WomCoProductType(nonNullTypes.map(_.fold(MyriadOutputInnerTypeToWomType)).toList)
+      // If there's a null type and a single non null type, it's a classic WomOptionalType
+      case (nullTypes, Array(singleNonNullType)) if nullTypes.nonEmpty =>
+        WomOptionalType(singleNonNullType.fold(MyriadOutputInnerTypeToWomType))
+      // If there's a null type and multiple non null types, it's a WomOptionalType(WomCoProductType)
+      case (nullTypes, nonNullTypes) if nullTypes.nonEmpty =>
+        WomOptionalType(WomCoProductType(nonNullTypes.map(_.fold(MyriadOutputInnerTypeToWomType)).toList))
     }
   }
 }
