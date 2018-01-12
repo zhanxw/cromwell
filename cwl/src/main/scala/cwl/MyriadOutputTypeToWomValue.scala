@@ -1,15 +1,17 @@
 package cwl
 
+import cats.data.Validated.Valid
 import cats.instances.list._
+import cats.syntax.option._
 import cats.syntax.traverse._
 import common.validation.ErrorOr.ErrorOr
 import cwl.CwlType.CwlType
 import cwl.MyriadOutputTypeToWomValue.EvaluationFunction
 import cwl.command.ParentName
 import mouse.all._
-import shapeless.{Coproduct, Poly1}
+import shapeless.Poly1
 import wom.types._
-import wom.values.{WomArray, WomObject, WomValue}
+import wom.values.{WomObject, WomValue}
 
 /**
   * Folds a MyriadOutputType into a WomValue
@@ -30,12 +32,9 @@ object MyriadOutputTypeToWomValue extends Poly1 {
   // Evaluate all the types and make a WomArray from it
   implicit def acwl: Aux[Array[MyriadOutputInnerType], EvaluationFunction => ErrorOr[WomValue]] = at[Array[MyriadOutputInnerType]] { types =>
     evalFunction =>
-      types.toList.traverse[ErrorOr, WomValue](_.fold(MyriadOutputInnerTypeToWomValue).apply(evalFunction)) map { values =>
-        Coproduct[MyriadOutputType](types).fold(MyriadOutputTypeToWomType) match {
-          case arrayType: WomArrayType => WomArray(arrayType, values)
-          case other => throw new RuntimeException(s"output type $other is not an array type")
-        }
-      }
+      types.toList.map(_.fold(MyriadOutputInnerTypeToWomValue).apply(evalFunction)).collectFirst({
+        case Valid(validValue) => validValue
+      }).toValidNel(s"Cannot find a suitable type to build a WomValue from in ${types.mkString(", ")}")
   }
 }
 
