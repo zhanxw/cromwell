@@ -14,7 +14,7 @@ object MyriadInputTypeToWomType extends Poly1 {
   // An array of type means "this input value can be in any of those types"
   implicit def am = at[Array[MyriadInputInnerType]] { types =>
     // If one of the type is "null", it means this is an optional type
-    types.partition(_.select[String].contains("null")) match {
+    types.partition(_.select[CwlType].contains(CwlType.Null)) match {
         // If there's no non null type, create a coproduct of the types
       case (nullTypes, nonNullTypes) if nullTypes.isEmpty =>
         WomCoProductType(nonNullTypes.map(_.fold(MyriadInputInnerTypeToWomType)).toList)

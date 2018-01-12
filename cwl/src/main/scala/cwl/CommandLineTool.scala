@@ -19,11 +19,11 @@ import cwl.requirement.RequirementToAttributeMap
 import eu.timepit.refined.W
 import shapeless.syntax.singleton._
 import shapeless.{:+:, CNil, Coproduct, Poly1, Witness}
-import wom.callable.Callable.{InputDefinitionWithDefault, OutputDefinition, RequiredInputDefinition}
+import wom.callable.Callable.{InputDefinitionWithDefault, OptionalInputDefinition, OutputDefinition, RequiredInputDefinition}
 import wom.callable.{Callable, CallableTaskDefinition}
 import wom.executable.Executable
 import wom.expression.{ValueAsAnExpression, WomExpression}
-import wom.types.{WomStringType, WomType}
+import wom.types.{WomOptionalType, WomStringType, WomType}
 import wom.values.{WomArray, WomEvaluatedCallInputs, WomFile, WomString, WomValue}
 import wom.{CommandPart, RuntimeAttributes}
 
@@ -186,11 +186,17 @@ case class CommandLineTool private(
           val inputType = tpe.fold(MyriadInputTypeToWomType)
           val inputName = FullyQualifiedName(inputId).id
           val defaultWomValue = default.fold(CommandInputParameter.DefaultToWomValuePoly).apply(inputType).toTry.get
-          InputDefinitionWithDefault(inputName, inputType, ValueAsAnExpression(defaultWomValue))
+          inputType match {
+            case optional: WomOptionalType => OptionalInputDefinition(inputName, optional)
+            case _ => InputDefinitionWithDefault(inputName, inputType, ValueAsAnExpression(defaultWomValue))
+          }
         case CommandInputParameter(inputId, _, _, _, _, _, _, None, Some(tpe)) =>
           val inputType = tpe.fold(MyriadInputTypeToWomType)
           val inputName = FullyQualifiedName(inputId).id
-          RequiredInputDefinition(inputName, inputType)
+          inputType match {
+            case optional: WomOptionalType => OptionalInputDefinition(inputName, optional)
+            case _ => RequiredInputDefinition(inputName, inputType)
+          }
         case other => throw new NotImplementedError(s"command input parameters such as $other are not yet supported")
       }.toList
 
