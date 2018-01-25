@@ -4,22 +4,25 @@
 #
 # - The interval-list file is required for both WGS and WES workflows and should be a Picard or GATK-style interval list.
 #   These intervals will be padded on both sides by the amount specified by PreprocessIntervals.padding (default 250)
-#   and split into bins of length specified by PreprocessIntervals.bin_length (default 1000; specify 0 to skip binning).
-#   For WGS, the intervals should simply cover the autosomal chromosomes (sex chromosomes may be included, but care
-#   should be taken to 1) avoid creating panels of mixed sex, and 2) denoise case samples only with panels containing
-#   individuals of the same sex as the case samples).
+#   and split into bins of length specified by PreprocessIntervals.bin_length (default 1000; specify 0 to skip binning,
+#   e.g. for WES).  For WGS, the intervals should simply cover the autosomal chromosomes (sex chromosomes may be
+#   included, but care should be taken to 1) avoid creating panels of mixed sex, and 2) denoise case samples only
+#   with panels containing individuals of the same sex as the case samples).
 #
 # - The sites file (common_sites) should be a Picard or GATK-style interval list.  This is a list of sites
 #   of known variation at which allelic counts will be collected for use in modeling minor-allele fractions.
 #
 # - Example invocation:
-#    java -jar cromwell.jar run cnv_somatic_pair_workflow.wdl myParameters.json
+#
+#       java -jar cromwell.jar run cnv_somatic_pair_workflow.wdl -i myParameters.json
+#
 #   See cnv_somatic_pair_workflow_template.json for a template json file to modify with your own parameters (please save
 #   your modified version with a different filename and do not commit to the gatk repository).
 #
 #############
 
 import "cnv_common_tasks.wdl" as CNVTasks
+import "cnv_somatic_oncotator_workflow.wdl" as CNVOncotator
 
 workflow CNVSomaticPairWorkflow {
     File common_sites
@@ -34,6 +37,12 @@ workflow CNVSomaticPairWorkflow {
     File ref_fasta
     String gatk_docker
     File? gatk4_jar_override
+
+    # For running oncotator
+    Boolean is_run_oncotator = false
+
+    # Ignored if not running oncotator
+    String oncotator_docker = "broadinstitute/oncotator:1.9.5.0-eval-gatk-protected"
 
     # Use as a last resort to increase the disk given to every task in case of ill behaving data
     Int? emergency_extra_disk
@@ -51,6 +60,8 @@ workflow CNVSomaticPairWorkflow {
     call CNVTasks.PreprocessIntervals {
         input:
             intervals = intervals,
+            ref_fasta = ref_fasta,
+            ref_fasta_fai = ref_fasta_fai,
             ref_fasta_dict = ref_fasta_dict,
             gatk4_jar_override = gatk4_jar_override,
             gatk_docker = gatk_docker,
@@ -63,6 +74,9 @@ workflow CNVSomaticPairWorkflow {
             intervals = PreprocessIntervals.preprocessed_intervals,
             bam = tumor_bam,
             bam_idx = tumor_bam_idx,
+            ref_fasta = ref_fasta,
+            ref_fasta_fai = ref_fasta_fai,
+            ref_fasta_dict = ref_fasta_dict,
             gatk4_jar_override = gatk4_jar_override,
             gatk_docker = gatk_docker,
             disk_space_gb = collect_counts_tumor_disk
@@ -74,6 +88,9 @@ workflow CNVSomaticPairWorkflow {
             intervals = PreprocessIntervals.preprocessed_intervals,
             bam = normal_bam,
             bam_idx = normal_bam_idx,
+            ref_fasta = ref_fasta,
+            ref_fasta_fai = ref_fasta_fai,
+            ref_fasta_dict = ref_fasta_dict,
             gatk4_jar_override = gatk4_jar_override,
             gatk_docker = gatk_docker,
             disk_space_gb = collect_counts_normal_disk
@@ -183,6 +200,7 @@ workflow CNVSomaticPairWorkflow {
             gatk_docker = gatk_docker,
             disk_space_gb = plot_tumor_disk
     }
+
     # The files from other tasks are small enough to just combine into one disk variable and pass to the normal plotting tasks
     Int plot_normal_disk = ref_size + ceil(size(DenoiseReadCountsNormal.standardized_copy_ratios, "GB")) + ceil(size(DenoiseReadCountsNormal.denoised_copy_ratios, "GB")) + ceil(size(ModelSegmentsNormal.het_allelic_counts, "GB")) + ceil(size(ModelSegmentsNormal.modeled_segments, "GB")) + disk_pad
     call PlotDenoisedCopyRatios as PlotDenoisedCopyRatiosNormal {
@@ -219,6 +237,69 @@ workflow CNVSomaticPairWorkflow {
             gatk_docker = gatk_docker,
             disk_space_gb = plot_normal_disk
     }
+
+    if (is_run_oncotator) {
+        call CNVOncotator.CNVOncotatorWorkflow as CNVOncotatorWorkflow {
+            input:
+                 called_file = CallCopyRatioSegmentsTumor.called_copy_ratio_segments,
+                 oncotator_docker = oncotator_docker
+        }
+    }
+
+    output {
+        File preprocessed_intervals = PreprocessIntervals.preprocessed_intervals
+
+        File read_counts_tumor = CollectCountsTumor.counts
+        File read_counts_entity_id_tumor = CollectCountsTumor.entity_id
+        File allelic_counts_tumor = CollectAllelicCountsTumor.allelic_counts
+        File allelic_counts_entity_id_tumor = CollectAllelicCountsTumor.entity_id
+        File denoised_copy_ratios_tumor = DenoiseReadCountsTumor.denoised_copy_ratios
+        File standardized_copy_ratios_tumor = DenoiseReadCountsTumor.standardized_copy_ratios
+        File het_allelic_counts_tumor = ModelSegmentsTumor.het_allelic_counts
+        File normal_het_allelic_counts_tumor = ModelSegmentsTumor.normal_het_allelic_counts
+        File copy_ratio_only_segments_tumor = ModelSegmentsTumor.copy_ratio_only_segments
+        File modeled_segments_begin_tumor = ModelSegmentsTumor.modeled_segments_begin
+        File copy_ratio_parameters_begin_tumor = ModelSegmentsTumor.copy_ratio_parameters_begin
+        File allele_fraction_parameters_begin_tumor = ModelSegmentsTumor.allele_fraction_parameters_begin
+        File modeled_segments_tumor = ModelSegmentsTumor.modeled_segments
+        File copy_ratio_parameters_tumor = ModelSegmentsTumor.copy_ratio_parameters
+        File allele_fraction_parameters_tumor = ModelSegmentsTumor.allele_fraction_parameters
+        File called_copy_ratio_segments_tumor = CallCopyRatioSegmentsTumor.called_copy_ratio_segments
+        File denoised_copy_ratios_plot_tumor = PlotDenoisedCopyRatiosTumor.denoised_copy_ratios_plot
+        File denoised_copy_ratios_lim_4_plot_tumor = PlotDenoisedCopyRatiosTumor.denoised_copy_ratios_lim_4_plot
+        File standardized_MAD_tumor = PlotDenoisedCopyRatiosTumor.standardized_MAD
+        File denoised_MAD_tumor = PlotDenoisedCopyRatiosTumor.denoised_MAD
+        File delta_MAD_tumor = PlotDenoisedCopyRatiosTumor.delta_MAD
+        File scaled_delta_MAD_tumor = PlotDenoisedCopyRatiosTumor.scaled_delta_MAD
+        File modeled_segments_plot_tumor = PlotModeledSegmentsTumor.modeled_segments_plot
+
+        File read_counts_normal = CollectCountsNormal.counts
+        File read_counts_entity_id_normal = CollectCountsNormal.entity_id
+        File allelic_counts_normal = CollectAllelicCountsNormal.allelic_counts
+        File allelic_counts_entity_id_normal = CollectAllelicCountsNormal.entity_id
+        File denoised_copy_ratios_normal = DenoiseReadCountsNormal.denoised_copy_ratios
+        File standardized_copy_ratios_normal = DenoiseReadCountsNormal.standardized_copy_ratios
+        File het_allelic_counts_normal = ModelSegmentsNormal.het_allelic_counts
+        File normal_het_allelic_counts_normal = ModelSegmentsNormal.normal_het_allelic_counts
+        File copy_ratio_only_segments_normal = ModelSegmentsNormal.copy_ratio_only_segments
+        File modeled_segments_begin_normal = ModelSegmentsNormal.modeled_segments_begin
+        File copy_ratio_parameters_begin_normal = ModelSegmentsNormal.copy_ratio_parameters_begin
+        File allele_fraction_parameters_begin_normal = ModelSegmentsNormal.allele_fraction_parameters_begin
+        File modeled_segments_normal = ModelSegmentsNormal.modeled_segments
+        File copy_ratio_parameters_normal = ModelSegmentsNormal.copy_ratio_parameters
+        File allele_fraction_parameters_normal = ModelSegmentsNormal.allele_fraction_parameters
+        File called_copy_ratio_segments_normal = CallCopyRatioSegmentsNormal.called_copy_ratio_segments
+        File denoised_copy_ratios_plot_normal = PlotDenoisedCopyRatiosNormal.denoised_copy_ratios_plot
+        File denoised_copy_ratios_lim_4_plot_normal = PlotDenoisedCopyRatiosNormal.denoised_copy_ratios_lim_4_plot
+        File standardized_MAD_normal = PlotDenoisedCopyRatiosNormal.standardized_MAD
+        File denoised_MAD_normal = PlotDenoisedCopyRatiosNormal.denoised_MAD
+        File delta_MAD_normal = PlotDenoisedCopyRatiosNormal.delta_MAD
+        File scaled_delta_MAD_normal = PlotDenoisedCopyRatiosNormal.scaled_delta_MAD
+        File modeled_segments_plot_normal = PlotModeledSegmentsNormal.modeled_segments_plot
+
+        File oncotated_called_file_tumor = select_first([CNVOncotatorWorkflow.oncotated_called_file, "null"])
+        File oncotated_called_gene_list_file_tumor = select_first([CNVOncotatorWorkflow.oncotated_called_gene_list_file, "null"])
+    }
 }
 
 task DenoiseReadCounts {
@@ -229,30 +310,29 @@ task DenoiseReadCounts {
     File? gatk4_jar_override
 
     # Runtime parameters
-    Int? mem
+    Int? mem_gb
     String gatk_docker
     Int? preemptible_attempts
     Int disk_space_gb
 
-    # Mem is in units of GB but our command and memory runtime values are in MB
-    Int machine_mem = if defined(mem) then mem * 1000 else 13000
-    Int command_mem = machine_mem - 1000
+    Int machine_mem_mb = select_first([mem_gb, 13]) * 1000
+    Int command_mem_mb = machine_mem_mb - 1000
 
     command <<<
         set -e
-        GATK_JAR=${default="/root/gatk.jar" gatk4_jar_override}
+        export GATK_LOCAL_JAR=${default="/root/gatk.jar" gatk4_jar_override}
 
-        java -Xmx${command_mem}m -jar $GATK_JAR DenoiseReadCounts \
+        gatk --java-options "-Xmx${command_mem_mb}m" DenoiseReadCounts \
             --input ${read_counts} \
-            --readCountPanelOfNormals ${read_count_pon} \
-            ${"--numberOfEigensamples " + number_of_eigensamples} \
-            --standardizedCopyRatios ${entity_id}.standardizedCR.tsv \
-            --denoisedCopyRatios ${entity_id}.denoisedCR.tsv
+            --count-panel-of-normals ${read_count_pon} \
+            ${"--number-of-eigensamples " + number_of_eigensamples} \
+            --standardized-copy-ratios ${entity_id}.standardizedCR.tsv \
+            --denoised-copy-ratios ${entity_id}.denoisedCR.tsv
     >>>
 
     runtime {
         docker: "${gatk_docker}"
-        memory: machine_mem + " MB"
+        memory: machine_mem_mb + " MB"
         disks: "local-disk " + disk_space_gb + " HDD"
         preemptible: select_first([preemptible_attempts, 5])
     }
@@ -291,15 +371,14 @@ task ModelSegments {
     File? gatk4_jar_override
 
     # Runtime parameters
-    Int? mem
+    Int? mem_gb
     String gatk_docker
     Int? preemptible_attempts
     Int disk_space_gb
 
-    # Mem is in units of GB but our command and memory runtime values are in MB
-    Int machine_mem = if defined(mem) then mem * 1000 else 13000
+    Int machine_mem_mb = select_first([mem_gb, 13]) * 1000
     # ModelSegments seems to need at least 3GB of overhead to run
-    Int command_mem = machine_mem - 3000
+    Int command_mem_mb = machine_mem_mb - 3000
 
     # If optional output_dir not specified, use "out"
     String output_dir_ = select_first([output_dir, "out"])
@@ -307,33 +386,33 @@ task ModelSegments {
     command <<<
         set -e
         mkdir ${output_dir_}
-        GATK_JAR=${default="/root/gatk.jar" gatk4_jar_override}
+        export GATK_LOCAL_JAR=${default="/root/gatk.jar" gatk4_jar_override}
 
-        java -Xmx${command_mem}m -jar $GATK_JAR ModelSegments \
-            --denoisedCopyRatios ${denoised_copy_ratios} \
-            --allelicCounts ${allelic_counts} \
-            ${"--normalAllelicCounts " + normal_allelic_counts} \
-            --maxNumSegmentsPerChromosome ${default="500" max_num_segments_per_chromosome} \
-            --minTotalAlleleCount ${default="30" min_total_allele_count} \
-            --genotypingHomozygousLogRatioThreshold ${default="-10.0" genotyping_homozygous_log_ratio_threshold} \
-            --genotypingBaseErrorRate ${default="0.05" genotyping_base_error_rate} \
-            --kernelVarianceCopyRatio ${default="0.0" kernel_variance_copy_ratio} \
-            --kernelVarianceAlleleFraction ${default="0.025" kernel_variance_allele_fraction} \
-            --kernelScalingAlleleFraction ${default="1.0" kernel_scaling_allele_fraction} \
-            --kernelApproximationDimension ${default="100" kernel_approximation_dimension} \
-            --windowSize ${sep= " --windowSize " window_sizes} \
-            --numChangepointsPenaltyFactor ${default="1.0" num_changepoints_penalty_factor} \
-            --minorAlleleFractionPriorAlpha ${default="25.0" minor_allele_fraction_prior_alpha} \
-            --numSamplesCopyRatio ${default=100 num_samples_copy_ratio} \
-            --numBurnInCopyRatio ${default=50 num_burn_in_copy_ratio} \
-            --numSamplesAlleleFraction ${default=100 num_samples_allele_fraction} \
-            --numBurnInAlleleFraction ${default=50 num_burn_in_allele_fraction} \
-            --smoothingThresholdCopyRatio ${default="2.0" smoothing_threshold_copy_ratio} \
-            --smoothingThresholdAlleleFraction ${default="2.0" smoothing_threshold_allele_fraction} \
-            --maxNumSmoothingIterations ${default=10 max_num_smoothing_iterations} \
-            --numSmoothingIterationsPerFit ${default=0 num_smoothing_iterations_per_fit} \
+        gatk --java-options "-Xmx${command_mem_mb}m" ModelSegments \
+            --denoised-copy-ratios ${denoised_copy_ratios} \
+            --allelic-counts ${allelic_counts} \
+            ${"--normal-allelic-counts " + normal_allelic_counts} \
+            --minimum-total-allele-count ${default="30" min_total_allele_count} \
+            --genotyping-homozygous-log-ratio-threshold ${default="-10.0" genotyping_homozygous_log_ratio_threshold} \
+            --genotyping-base-error-rate ${default="0.05" genotyping_base_error_rate} \
+            --maximum-number-of-segments-per-chromosome ${default="1000" max_num_segments_per_chromosome} \
+            --kernel-variance-copy-ratio ${default="0.0" kernel_variance_copy_ratio} \
+            --kernel-variance-allele-fraction ${default="0.025" kernel_variance_allele_fraction} \
+            --kernel-scaling-allele-fraction ${default="1.0" kernel_scaling_allele_fraction} \
+            --kernel-approximation-dimension ${default="100" kernel_approximation_dimension} \
+            --window-size ${sep= " --window-size " window_sizes} \
+            --number-of-changepoints-penalty-factor ${default="1.0" num_changepoints_penalty_factor} \
+            --minor-allele-fraction-prior-alpha ${default="25.0" minor_allele_fraction_prior_alpha} \
+            --number-of-samples-copy-ratio ${default=100 num_samples_copy_ratio} \
+            --number-of-burn-in-samples-copy-ratio ${default=50 num_burn_in_copy_ratio} \
+            --number-of-samples-allele-fraction ${default=100 num_samples_allele_fraction} \
+            --number-of-burn-in-samples-allele-fraction ${default=50 num_burn_in_allele_fraction} \
+            --smoothing-credible-interval-threshold-copy-ratio ${default="2.0" smoothing_threshold_copy_ratio} \
+            --smoothing-credible-interval-threshold-allele-fraction ${default="2.0" smoothing_threshold_allele_fraction} \
+            --maximum-number-of-smoothing-iterations ${default=10 max_num_smoothing_iterations} \
+            --number-of-smoothing-iterations-per-fit ${default=0 num_smoothing_iterations_per_fit} \
             --output ${output_dir_} \
-            --outputPrefix ${entity_id}
+            --output-prefix ${entity_id}
 
         # We need to create the file even if the above command doesn't so we have something to delocalize
         # If no file is created by the above task then it will copy out an empty file
@@ -342,7 +421,7 @@ task ModelSegments {
 
     runtime {
         docker: "${gatk_docker}"
-        memory: machine_mem + " MB"
+        memory: machine_mem_mb + " MB"
         disks: "local-disk " + disk_space_gb + " HDD"
         preemptible: select_first([preemptible_attempts, 5])
     }
@@ -369,30 +448,29 @@ task CallCopyRatioSegments {
     File? gatk4_jar_override
 
     # Runtime parameters
-    Int? mem
+    Int? mem_gb
     String gatk_docker
     Int? preemptible_attempts
     Int disk_space_gb
 
-    # Mem is in units of GB but our command and memory runtime values are in MB
-    Int machine_mem = if defined(mem) then mem * 1000 else 7000
-    Int command_mem = machine_mem - 1000
+    Int machine_mem_mb = select_first([mem_gb, 7]) * 1000
+    Int command_mem_mb = machine_mem_mb - 1000
 
     command <<<
         set -e
-        GATK_JAR=${default="/root/gatk.jar" gatk4_jar_override}
+        export GATK_LOCAL_JAR=${default="/root/gatk.jar" gatk4_jar_override}
 
-        java -Xmx${command_mem}m -jar $GATK_JAR CallCopyRatioSegments \
+        gatk --java-options "-Xmx${command_mem_mb}m" CallCopyRatioSegments \
             --input ${copy_ratio_segments} \
-            --neutralSegmentCopyRatioThreshold ${default="0.1" neutral_segment_copy_ratio_threshold} \
-            --outlierNeutralSegmentCopyRatioZScoreThreshold ${default="2.0" outlier_neutral_segment_copy_ratio_z_score_threshold} \
-            --callingCopyRatioZScoreThreshold ${default="2.0" calling_copy_ratio_z_score_threshold} \
+            --neutral-segment-copy-ratio-threshold ${default="0.1" neutral_segment_copy_ratio_threshold} \
+            --outlier-neutral-segment-copy-ratio-z-score-threshold ${default="2.0" outlier_neutral_segment_copy_ratio_z_score_threshold} \
+            --calling-copy-ratio-z-score-threshold ${default="2.0" calling_copy_ratio_z_score_threshold} \
             --output ${entity_id}.called.seg
     >>>
 
     runtime {
         docker: "${gatk_docker}"
-        memory: machine_mem + " MB"
+        memory: machine_mem_mb + " MB"
         disks: "local-disk " + disk_space_gb + " HDD"
         preemptible: select_first([preemptible_attempts, 5])
     }
@@ -412,14 +490,13 @@ task PlotDenoisedCopyRatios {
     File? gatk4_jar_override
 
     # Runtime parameters
-    Int? mem
+    Int? mem_gb
     String gatk_docker
     Int? preemptible_attempts
     Int disk_space_gb
 
-    # Mem is in units of GB but our command and memory runtime values are in MB
-    Int machine_mem = if defined(mem) then mem * 1000 else 7000
-    Int command_mem = machine_mem - 1000
+    Int machine_mem_mb = select_first([mem_gb, 7]) * 1000
+    Int command_mem_mb = machine_mem_mb - 1000
 
     # If optional output_dir not specified, use "out"
     String output_dir_ = select_first([output_dir, "out"])
@@ -427,20 +504,20 @@ task PlotDenoisedCopyRatios {
     command <<<
         set -e
         mkdir ${output_dir_}
-        GATK_JAR=${default="/root/gatk.jar" gatk4_jar_override}
+        export GATK_LOCAL_JAR=${default="/root/gatk.jar" gatk4_jar_override}
 
-        java -Xmx${command_mem}m -jar $GATK_JAR PlotDenoisedCopyRatios \
-            --standardizedCopyRatios ${standardized_copy_ratios} \
-            --denoisedCopyRatios ${denoised_copy_ratios} \
-            --sequenceDictionary ${ref_fasta_dict} \
-            --minimumContigLength ${default="1000000" minimum_contig_length} \
+        gatk --java-options "-Xmx${command_mem_mb}m" PlotDenoisedCopyRatios \
+            --standardized-copy-ratios ${standardized_copy_ratios} \
+            --denoised-copy-ratios ${denoised_copy_ratios} \
+            --sequence-dictionary ${ref_fasta_dict} \
+            --minimum-contig-length ${default="1000000" minimum_contig_length} \
             --output ${output_dir_} \
-            --outputPrefix ${entity_id}
+            --output-prefix ${entity_id}
     >>>
 
     runtime {
         docker: "${gatk_docker}"
-        memory: machine_mem + " MB"
+        memory: machine_mem_mb + " MB"
         disks: "local-disk " + disk_space_gb + " HDD"
         preemptible: select_first([preemptible_attempts, 5])
     }
@@ -466,14 +543,13 @@ task PlotModeledSegments {
     File? gatk4_jar_override
 
     # Runtime parameters
-    Int? mem
+    Int? mem_gb
     String gatk_docker
     Int? preemptible_attempts
     Int disk_space_gb
 
-    # Mem is in units of GB but our command and memory runtime values are in MB
-    Int machine_mem = if defined(mem) then mem * 1000 else 7000
-    Int command_mem = machine_mem - 1000
+    Int machine_mem_mb = select_first([mem_gb, 7]) * 1000
+    Int command_mem_mb = machine_mem_mb - 1000
 
     # If optional output_dir not specified, use "out"
     String output_dir_ = select_first([output_dir, "out"])
@@ -481,21 +557,21 @@ task PlotModeledSegments {
     command <<<
         set -e
         mkdir ${output_dir_}
-        GATK_JAR=${default="/root/gatk.jar" gatk4_jar_override}
+        export GATK_LOCAL_JAR=${default="/root/gatk.jar" gatk4_jar_override}
 
-        java -Xmx${command_mem}m -jar $GATK_JAR PlotModeledSegments \
-            --denoisedCopyRatios ${denoised_copy_ratios} \
-            --allelicCounts ${het_allelic_counts} \
+        gatk --java-options "-Xmx${command_mem_mb}m" PlotModeledSegments \
+            --denoised-copy-ratios ${denoised_copy_ratios} \
+            --allelic-counts ${het_allelic_counts} \
             --segments ${modeled_segments} \
-            --sequenceDictionary ${ref_fasta_dict} \
-            --minimumContigLength ${default="1000000" minimum_contig_length} \
+            --sequence-dictionary ${ref_fasta_dict} \
+            --minimum-contig-length ${default="1000000" minimum_contig_length} \
             --output ${output_dir_} \
-            --outputPrefix ${entity_id}
+            --output-prefix ${entity_id}
     >>>
 
     runtime {
         docker: "${gatk_docker}"
-        memory: machine_mem + " MB"
+        memory: machine_mem_mb + " MB"
         disks: "local-disk " + disk_space_gb + " HDD"
         preemptible: select_first([preemptible_attempts, 5])
     }
