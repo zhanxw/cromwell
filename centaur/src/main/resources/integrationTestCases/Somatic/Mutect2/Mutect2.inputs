@@ -6,7 +6,7 @@
     "Mutect2.is_run_oncotator": True,
     "Mutect2.variants_for_contamination": "gs://gatk-best-practices/somatic-b37/small_exac_common_3.vcf",
     "Mutect2.ref_fasta": "gs://gatk-best-practices/somatic-b37/Homo_sapiens_assembly19.fasta",
-    "Mutect2.gatk_docker": "us.gcr.io/broad-dsde-methods/broad-gatk-snapshots:gatk-package-4.beta.6-95-g112ce25",
+    "Mutect2.gatk_docker": "us.gcr.io/broad-gatk/gatk",
     "Mutect2.intervals": "gs://gatk-best-practices/somatic-b37/whole_exome_agilent_1.1_refseq_plus_3_boosters.Homo_sapiens_assembly19.baits.interval_list",
     "Mutect2.tumor_bam_index": "gs://gatk-best-practices/somatic-b37/HCC1143.bai",
     "Mutect2.oncotator_docker": "broadinstitute/oncotator:1.9.3.0",
