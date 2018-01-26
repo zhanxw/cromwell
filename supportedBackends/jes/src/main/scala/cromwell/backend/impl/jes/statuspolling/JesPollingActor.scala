@@ -33,7 +33,7 @@ class JesPollingActor(val pollingManager: ActorRef, val qps: Int Refined Positiv
   override def receive = {
 
     case JesPollingWorkBatch(workBatch) =>
-      log.debug(s"Got a polling batch with ${workBatch.tail.size + 1} requests.")
+      log.info(s"Got a polling batch with ${workBatch.tail.size + 1} requests.")
       handleBatch(workBatch).andThen(interstitialRecombobulation)
       ()
     case NoWorkToDo =>
@@ -61,7 +61,9 @@ class JesPollingActor(val pollingManager: ActorRef, val qps: Int Refined Positiv
 
   // These are separate functions so that the tests can hook in and replace the JES-side stuff
   private[statuspolling] def createBatch(genomicsInterface: Genomics): BatchRequest = genomicsInterface.batch()
-  private[statuspolling] def runBatch(batch: BatchRequest) = batch.execute()
+  private[statuspolling] def runBatch(batch: BatchRequest) = {
+    batch.execute()
+  }
 
   // TODO: FSMify this actor?
   private def interstitialRecombobulation: PartialFunction[Try[List[Try[Unit]]], Unit] = {
