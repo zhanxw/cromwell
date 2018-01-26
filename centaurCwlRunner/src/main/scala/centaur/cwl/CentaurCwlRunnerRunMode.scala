@@ -22,7 +22,7 @@ sealed trait CentaurCwlRunnerRunMode {
     *
     * For example, may prefix relative paths so that absolute URLs are used.
     */
-  def preProcessWorkflow(workflow: String): String = workflow
+  def preProcessWorkflow(workflow: String): (String, List[(String, String)]) = (workflow, List.empty)
 
   /**
     * Runs any preprocessing as needed on inputs.
@@ -59,7 +59,7 @@ case class PapiRunMode(conf: Config) extends CentaurCwlRunnerRunMode {
     GcsPathBuilderFactory(auth, googleConf.applicationName, None)
   }
 
-  override def preProcessWorkflow(workflow: String): String = preprocessor.preProcessWorkflow(workflow)
+  override def preProcessWorkflow(workflow: String): (String, List[(String, String)]) = preprocessor.preProcessWorkflow(workflow)
 
   override def preProcessInput(input: String): String = preprocessor.preProcessInput(input)
 }

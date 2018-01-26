@@ -1,5 +1,7 @@
 package centaur.cwl
 
+import java.util.zip.ZipOutputStream
+
 import better.files._
 import centaur.api.CentaurCromwellClient
 import centaur.cwl.Outputs._
@@ -80,8 +82,16 @@ object CentaurCwlRunner extends StrictLogging {
   }
 
   private def runCentaur(args: CommandLineArguments): ExitCode.Value = {
+    
+    def addToZip(zip: File, name: String, content: String): Unit = {
+      val file = File.newTemporaryFile().write(content)
+      for {
+        output <- new ZipOutputStream(zip.newOutputStream).autoClosed
+      } output.add(file, name)
+      file.delete(swallowIOExceptions = true)
+    }
 
-    def zipSiblings(file: File): File = {
+    def zipSiblings(file: File, overwrite: List[(String, String)]): File = {
       val zipFile = File.newTemporaryFile("cwl_imports.", ".zip")
       val dir = file.parent
       if (!args.quiet) {
@@ -92,7 +102,12 @@ object CentaurCwlRunner extends StrictLogging {
         .children
         .filter(_.isRegularFile)
         .filter(_.size < 1 * 1024 * 1024)
+        .filterNot(p => overwrite.map(_._1).contains(p.name))
+
       Cmds.zip(files.toSeq: _*)(zipFile)
+      overwrite.foreach({
+        case (name, content) => addToZip(zipFile, name, content)
+      })
       zipFile
     }
 
@@ -103,7 +118,7 @@ object CentaurCwlRunner extends StrictLogging {
     }
     val outdirOption = args.outdir.map(_.pathAsString)
     val testName = workflowPath.name
-    val workflowContents = centaurCwlRunnerRunMode.preProcessWorkflow(parsedWorkflowPath.contentAsString)
+    val (workflowContents, nested) = centaurCwlRunnerRunMode.preProcessWorkflow(parsedWorkflowPath.contentAsString)
     val inputContents = args.workflowInputs.map(_.contentAsString) map centaurCwlRunnerRunMode.preProcessInput
     val workflowType = Option("cwl")
     val workflowTypeVersion = None
@@ -111,7 +126,7 @@ object CentaurCwlRunner extends StrictLogging {
       JsObject("cwl_outdir" -> JsString(outdir)).compactPrint
     }
     val labels = List.empty
-    val zippedImports = Option(zipSiblings(workflowPath)) // TODO: Zipping all the things! Be more selective.
+    val zippedImports = Option(zipSiblings(workflowPath, nested)) // TODO: Zipping all the things! Be more selective.
     val backends = AllBackendsRequired(List.empty)
     val workflowMetadata = None
     val notInMetadata = List.empty

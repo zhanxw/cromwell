@@ -1,4 +1,5 @@
 package centaur.cwl
+import better.files.File
 import com.typesafe.config.Config
 import io.circe.optics.JsonPath
 import io.circe.optics.JsonPath._
@@ -17,7 +18,7 @@ class PAPIPreprocessor(config: Config) {
 
   // Default docker pull image
   val DefaultDockerPull = "dockerPull" -> Json.fromString("ubuntu:latest")
-  
+
   // Default docker image to be injected in a pre-existing requirements array
   private val DefaultDockerRequirement: Json = {
     Json.obj(
@@ -33,19 +34,26 @@ class PAPIPreprocessor(config: Config) {
     )
   }
 
-  // Parse value, apply f to it, and print it back to String using the printer
-  private def process(value: String, f: Json => Json, printer: Json => String) = {
+  private def parse(value: String): Json = {
     yaml.parser.parse(value) match {
       case Left(error) => throw new Exception(error.getMessage)
-      case Right(json) => printer(f(json))
+      case Right(json) => json
     }
   }
 
+  // Parse value, apply f to it, and print it back to String using the printer
+  private def process(value: String, f: Json => Json, printer: Json => String) = {
+    printer(f(parse(value)))
+  }
+
   // Process and print back as YAML
-  private def processYaml(value: String)(f: Json => Json) = process(value, f, yaml.Printer.spaces2.pretty)
+  private def processYaml[A](value: String)(f: Json => (Json, A)) = {
+    val (json, context) = f(parse(value))
+    yaml.Printer.spaces2.copy(stringStyle = yaml.Printer.StringStyle.DoubleQuoted).pretty(json) -> context
+  }
 
   // Process and print back as JSON
-  private def processJson(value: String)(f: Json => Json) = process(value, f, io.circe.Printer.spaces2.pretty)
+  private def processJson(value: String)(f: Json => Json): String = process(value, f, io.circe.Printer.spaces2.pretty)
 
   // Prefix the string at "key" with the gcs prefix
   private def prefixLocationWithGcs(key: String): Json => Json = root.selectDynamic(key).string.modify(gcsPrefix + _)
@@ -91,6 +99,29 @@ class PAPIPreprocessor(config: Config) {
     */
   def preProcessInput(input: String): String = processJson(input)(prefixFiles)
 
+  /*
+    * If a workflow has steps which point to another file, we also need to process it.
+    * e.g:
+    * class: Workflow
+    * steps:
+    *  step1:
+    *   run: wc-tool.cwl
+   */
+  private def processEmbeddedFiles(json: Json): List[(String, String)] = {
+    // Fet all the objects in the steps field, and collect the "run" values which represent another cwl file
+    val embeddedFileNames = root.steps.each.obj.getAll(json).flatMap(
+      _.kleisli("run")
+        // If there's a "#" it means it's pointing to another Workflow / Tool in the same file, we don't want that
+        .flatMap(_.asString.filterNot(_.startsWith("#")))
+    )
+
+    embeddedFileNames.flatMap({ fileName =>
+      // For each file, process it, and add the result to the list of nested workflows
+      val (processedWorkflow, nestedWorkflows) = preProcessWorkflow(File(fileName).contentAsString)
+      nestedWorkflows :+ (fileName -> processedWorkflow)
+    })
+  }
+
   // Check if the given path (as an array or object) has a DockerRequirement element
   def hasDocker(jsonPath: JsonPath)(json: Json): Boolean = {
     val hasDockerInArray: Json => Boolean = jsonPath.arr.exist(_.exists(hasKeyValue("class", "DockerRequirement")))
@@ -103,7 +134,7 @@ class PAPIPreprocessor(config: Config) {
   def hasDocker(json: Json): Boolean = hasDocker(root.hints)(json) || hasDocker(root.requirements)(json)
 
   // Add a default docker requirement to the workflow if it doesn't have one
-  private def addDefaultDocker(workflow: Json) = if (!hasDocker(workflow)) {
+  private def addDefaultDocker(workflow: Json): Json = if (!hasDocker(workflow)) {
     /*
       * deepMerge does not combine objects together but replaces keys which would overwrite existing requirements
       * so first check if there are requirements already and if so add our docker one.
@@ -124,10 +155,14 @@ class PAPIPreprocessor(config: Config) {
     */
   def preProcessWorkflow(workflow: String) = processYaml(workflow) { json =>
     def process = addDefaultDocker _
-    
+
     // Some files contain a list of tools / workflows under the "$graph" field. In this case recursively add docker default to them
-    root.$graph.arr.modifyOption(_.map(process))(json)
+    val withDefaultDocker = root.$graph.arr.modifyOption(_.map(process))(json)
       // otherwise just process the file as a single workflow / tool
       .getOrElse(process(json))
+
+    val embeddedFiles: List[(String, String)] = root.$graph.arr.getOption(json).map(_.flatMap(processEmbeddedFiles)).getOrElse(processEmbeddedFiles(json)).toList
+
+    withDefaultDocker -> embeddedFiles
   }
 }
