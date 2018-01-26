@@ -1,19 +1,24 @@
 import better.files.File
+import centaur.cwl.CentaurCwlRunnerRunMode.ProcessedWorkflow
 import centaur.cwl.PAPIPreprocessor
 import com.typesafe.config.ConfigFactory
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.{Assertion, FlatSpec, Matchers}
 
 class PAPIPreprocessorSpec extends FlatSpec with Matchers {
   behavior of "PAPIPreProcessor"
 
   val pAPIPreprocessor = new PAPIPreprocessor(ConfigFactory.load())
 
-  def validate(result: String, expectation: String) = {
+  def validate(result: String, expectation: String): Assertion = {
     val parsedResult = io.circe.yaml.parser.parse(result).right.get
     val parsedExpectation = io.circe.yaml.parser.parse(expectation).right.get
 
     // This is an actual Json comparison from circe
     parsedResult shouldBe parsedExpectation
+  }
+  
+  def validate(result: ProcessedWorkflow, expectation: String): Assertion = {
+    validate(result.content, expectation)
   }
 
   it should "prefix files and directories in inputs" in {
@@ -104,7 +109,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin)._1,
+           |""".stripMargin),
       """|class: CommandLineTool
          |cwlVersion: v1.0
          |requirements:
@@ -142,7 +147,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin)._1,
+           |""".stripMargin),
       """|class: CommandLineTool
          |requirements:
          |  - class: DockerRequirement
@@ -181,7 +186,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin)._1,
+           |""".stripMargin),
       """|class: CommandLineTool
          |requirements:
          |  - class: EnvVarRequirement
@@ -225,7 +230,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |baseCommand: ["/bin/bash", "-c", "echo $TEST_ENV"]
            |
            |stdout: out
-           |""".stripMargin)._1,
+           |""".stripMargin),
       """|class: CommandLineTool
          |cwlVersion: v1.0
          |inputs:
@@ -278,7 +283,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |      out: []
            |
            |  outputs: []
-           |""".stripMargin)._1,
+           |""".stripMargin),
       """|#!/usr/bin/env cwl-runner
          |
          |cwlVersion: v1.0
@@ -330,7 +335,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow)._1, workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
   }
 
   it should "not replace existing docker hint in an object" in {
@@ -350,7 +355,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow)._1, workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
   }
 
   it should "not replace existing docker hint in an array" in {
@@ -370,7 +375,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow)._1, workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
   }
 
   it should "not replace existing docker requirement in an array" in {
@@ -390,7 +395,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow)._1, workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
   }
 
   it should "throw an exception if yaml / json can't be parse" in {
@@ -403,63 +408,73 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
   }
 
   it should "process nested files" in {
-    val rootWorkflow = """|class: Workflow
+    val nestedWorkflowFile = File.newTemporaryFile("nestedWorkflow.cwl")
+    val nestedToolFile1 = File.newTemporaryFile("tool1.cwl")
+    val nestedToolFile2 = File.newTemporaryFile("tool2.cwl")
+    
+    val rootWorkflow = s"""|class: Workflow
                           |cwlVersion: v1.0
                           |steps:
                           |  step1:
-                          |    run: nestedWorkflow.cwl
+                          |    run: ${nestedWorkflowFile.pathAsString}
                           |  step2:
-                          |    run: tool1.cwl
+                          |    run: ${nestedToolFile1.pathAsString}
                           |""".stripMargin
 
-    val nestedWorkflowContent = """|class: Workflow
+    val nestedWorkflowContent = s"""|class: Workflow
                                    |cwlVersion: v1.0
                                    |steps:
                                    |  step1:
-                                   |    run: tool2.cwl
+                                   |    run: ${nestedToolFile2.pathAsString}
                                    |""".stripMargin
 
     val toolContent = """|class: CommandLineTool
                          |cwlVersion: v1.0
                          |""".stripMargin
 
-    File("nestedWorkflow.cwl").write(nestedWorkflowContent)
-    File("tool1.cwl").write(toolContent)
-    File("tool2.cwl").write(toolContent)
+    nestedWorkflowFile.write(nestedWorkflowContent)
+    nestedToolFile1.write(toolContent)
+    nestedToolFile2.write(toolContent)
 
-    val (processedWorkflow, nested) = pAPIPreprocessor.preProcessWorkflow(rootWorkflow)
+    val processed = pAPIPreprocessor.preProcessWorkflow(rootWorkflow)
 
-    validate(processedWorkflow, """|class: Workflow
+    validate(processed, s"""|class: Workflow
                                    |cwlVersion: v1.0
                                    |requirements:
                                    |  - class: DockerRequirement
                                    |    dockerPull: ubuntu:latest
                                    |steps:
                                    |  step1:
-                                   |    run: nestedWorkflow.cwl
+                                   |    run: ${nestedWorkflowFile.pathAsString}
                                    |  step2:
-                                   |    run: tool1.cwl
+                                   |    run: ${nestedToolFile1.pathAsString}
                                    |""".stripMargin)
 
-    nested.size shouldBe 3
-    validate(nested.find(_._1 == "nestedWorkflow.cwl").get._2, """|class: Workflow
+    val dependencies = processed.dependencies
+    dependencies.size shouldBe 3
+    
+    def dependencyContent(name: String) = {
+      dependencies.find(_.name == name).get.content
+    } 
+
+    validate(dependencyContent(nestedWorkflowFile.pathAsString), s"""|class: Workflow
                                                                   |cwlVersion: v1.0
                                                                   |requirements:
                                                                   |  - class: DockerRequirement
                                                                   |    dockerPull: ubuntu:latest
                                                                   |steps:
                                                                   |  step1:
-                                                                  |    run: tool2.cwl
+                                                                  |    run: ${nestedToolFile2.pathAsString}
                                                                   |""".stripMargin)
 
-    validate(nested.find(_._1 == "tool1.cwl").get._2, """|class: CommandLineTool
+    validate(dependencyContent(nestedToolFile1.pathAsString), """|class: CommandLineTool
                                                          |requirements:
                                                          |  - class: DockerRequirement
                                                          |    dockerPull: ubuntu:latest
                                                          |cwlVersion: v1.0
                                                          |""".stripMargin)
 
-    validate(nested.find(_._1 == "tool2.cwl").get._2, """|class: CommandLineTool
+    validate(dependencyContent(nestedToolFile2.pathAsString), """|class: CommandLineTool
                                                          |requirements:
                                                          |  - class: DockerRequirement
                                                          |    dockerPull: ubuntu:latest
