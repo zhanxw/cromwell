@@ -85,9 +85,12 @@ object CentaurCwlRunner extends StrictLogging {
   private def runCentaur(args: CommandLineArguments): ExitCode.Value = {
     
     def addToZip(zip: File, dependencies: List[ProcessedDependency]): Unit = {
+      val defaultDependencies = List(
+        ProcessedDependency("underscore.js", File("v1.0/underscore.js").contentAsString)
+      )
       for {
         output <- new ZipOutputStream(zip.newOutputStream).autoClosed
-        dependency <- dependencies
+        dependency <- dependencies ++ defaultDependencies
         file = File.newTemporaryFile().write(dependency.content)
       } output.add(file, dependency.name)
     }

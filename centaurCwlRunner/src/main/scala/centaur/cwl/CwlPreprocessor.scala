@@ -26,13 +26,19 @@ class CwlPreprocessor(rootDirectory: File) {
   
   private def processDependencies(f: Json => Json)(json: Json): List[ProcessedDependency] = {
     // Fet all the objects in the steps field, and collect the "run" values which represent another cwl file
-    val embeddedFileNames = root.steps.each.obj.getAll(json).flatMap(
+    val runFileNames = root.steps.each.obj.getAll(json).flatMap(
       _.kleisli("run")
         // If there's a "#" it means it's pointing to another Workflow / Tool in the same file, we don't want that
         .flatMap(_.asString.filterNot(_.startsWith("#")))
     )
 
-    embeddedFileNames.flatMap({ fileName =>
+    val hintsImportFileNames = root.hints.each.obj.getAll(json).flatMap(
+      _.kleisli("$import")
+        // If there's a "#" it means it's pointing to another Workflow / Tool in the same file, we don't want that
+        .flatMap(_.asString.filterNot(_.startsWith("#")))
+    )
+
+    (runFileNames ++ hintsImportFileNames).flatMap({ fileName =>
       // For each file, process it, and add the result to the list of nested workflows
       val processed = collectDependencies(rootDirectory./(fileName).contentAsString, f)
       processed.dependencies :+ ProcessedDependency(fileName, processed.content)
