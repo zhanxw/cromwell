@@ -1,5 +1,7 @@
 package centaur.cwl
 
+import better.files.File
+import centaur.cwl.CentaurCwlRunnerRunMode.ProcessedWorkflow
 import com.typesafe.config.Config
 import common.validation.Validation._
 import cromwell.cloudsupport.gcp.GoogleConfiguration
@@ -22,7 +24,7 @@ sealed trait CentaurCwlRunnerRunMode {
     *
     * For example, may prefix relative paths so that absolute URLs are used.
     */
-  def preProcessWorkflow(workflow: String): String = workflow
+  def preProcessWorkflow(workflow: String, parentDirectory: File): ProcessedWorkflow
 
   /**
     * Runs any preprocessing as needed on inputs.
@@ -33,6 +35,9 @@ sealed trait CentaurCwlRunnerRunMode {
 }
 
 object CentaurCwlRunnerRunMode {
+  case class ProcessedDependency(name: String, content: String)
+  case class ProcessedWorkflow(content: String, dependencies: List[ProcessedDependency])
+
   def fromConfig(conf: Config): CentaurCwlRunnerRunMode = {
     conf.getString("mode") match {
       case "local" => LocalRunMode
@@ -45,6 +50,8 @@ object CentaurCwlRunnerRunMode {
 case object LocalRunMode extends CentaurCwlRunnerRunMode {
   override lazy val description: String = "local"
   override lazy val pathBuilderFactory: PathBuilderFactory = DefaultPathBuilderFactory
+  private lazy val preprocessor = new CwlPreprocessor
+  override def preProcessWorkflow(workflow: String, parentDirectory: File): ProcessedWorkflow = preprocessor.collectDependencies(workflow, parentDirectory)
 }
 
 case class PapiRunMode(conf: Config) extends CentaurCwlRunnerRunMode {
@@ -59,7 +66,7 @@ case class PapiRunMode(conf: Config) extends CentaurCwlRunnerRunMode {
     GcsPathBuilderFactory(auth, googleConf.applicationName, None)
   }
 
-  override def preProcessWorkflow(workflow: String): String = preprocessor.preProcessWorkflow(workflow)
+  override def preProcessWorkflow(workflow: String, parentDirectory: File): ProcessedWorkflow = preprocessor.preProcessWorkflow(workflow, parentDirectory)
 
   override def preProcessInput(input: String): String = preprocessor.preProcessInput(input)
 }

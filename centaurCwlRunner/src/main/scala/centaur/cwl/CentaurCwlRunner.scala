@@ -1,7 +1,10 @@
 package centaur.cwl
 
+import java.util.zip.ZipOutputStream
+
 import better.files._
 import centaur.api.CentaurCromwellClient
+import centaur.cwl.CentaurCwlRunnerRunMode.ProcessedDependency
 import centaur.cwl.Outputs._
 import centaur.test.TestOptions
 import centaur.test.standard.{CentaurTestCase, CentaurTestFormat}
@@ -80,20 +83,29 @@ object CentaurCwlRunner extends StrictLogging {
   }
 
   private def runCentaur(args: CommandLineArguments): ExitCode.Value = {
+    
+    def addToZip(zip: File, dependencies: List[(String, File)]): File = {
+      for {
+        output <- new ZipOutputStream(zip.newOutputStream).autoClosed
+        dependency <- dependencies
+        (name, file) = dependency
+      } output.add(file, name)
+      zip
+    }
 
-    def zipSiblings(file: File): File = {
+    def zipDependencies(file: File, dependencies: List[ProcessedDependency]): File = {
       val zipFile = File.newTemporaryFile("cwl_imports.", ".zip")
-      val dir = file.parent
+      val cwlDependencies = dependencies.map({ dependency =>
+        dependency.name -> File.newTemporaryFile().write(dependency.content)
+      }).toMap
+
+      val filesToBeZipped = file.siblings.map({ sibling => sibling.name -> cwlDependencies.getOrElse(sibling.name, sibling) }).toList
+      
       if (!args.quiet) {
-        logger.info(s"Zipping files under 1mb in $dir to $zipFile")
+        logger.info(s"Zipping dependency files ${filesToBeZipped.map(_._1).mkString(", ")} to $zipFile")
       }
-      // TODO: Only include files under 1mb for now. When cwl runners run in parallel this can use a lot of space.
-      val files = dir
-        .children
-        .filter(_.isRegularFile)
-        .filter(_.size < 1 * 1024 * 1024)
-      Cmds.zip(files.toSeq: _*)(zipFile)
-      zipFile
+
+      addToZip(zipFile, filesToBeZipped)
     }
 
     val workflowPath = args.workflowSource.get
@@ -103,7 +115,7 @@ object CentaurCwlRunner extends StrictLogging {
     }
     val outdirOption = args.outdir.map(_.pathAsString)
     val testName = workflowPath.name
-    val workflowContents = centaurCwlRunnerRunMode.preProcessWorkflow(parsedWorkflowPath.contentAsString)
+    val processedWorkflow = centaurCwlRunnerRunMode.preProcessWorkflow(parsedWorkflowPath.contentAsString, parsedWorkflowPath.parent)
     val inputContents = args.workflowInputs.map(_.contentAsString) map centaurCwlRunnerRunMode.preProcessInput
     val workflowType = Option("cwl")
     val workflowTypeVersion = None
@@ -111,7 +123,7 @@ object CentaurCwlRunner extends StrictLogging {
       JsObject("cwl_outdir" -> JsString(outdir)).compactPrint
     }
     val labels = List.empty
-    val zippedImports = Option(zipSiblings(workflowPath)) // TODO: Zipping all the things! Be more selective.
+    val zippedImports = Option(zipDependencies(workflowPath, processedWorkflow.dependencies))
     val backends = AllBackendsRequired(List.empty)
     val workflowMetadata = None
     val notInMetadata = List.empty
@@ -121,7 +133,7 @@ object CentaurCwlRunner extends StrictLogging {
     val submitResponseOption = None
 
     val workflowData = WorkflowData(
-      workflowContents, workflowRoot, workflowType, workflowTypeVersion, inputContents, optionsContents, labels, zippedImports)
+      processedWorkflow.content, workflowRoot, workflowType, workflowTypeVersion, inputContents, optionsContents, labels, zippedImports)
     val workflow = Workflow(testName, workflowData, workflowMetadata, notInMetadata, directoryContentCounts, backends)
     val testCase = CentaurTestCase(workflow, testFormat, testOptions, submitResponseOption)
 

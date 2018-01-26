@@ -1,18 +1,30 @@
+import better.files.File
+import centaur.cwl.CentaurCwlRunnerRunMode.ProcessedWorkflow
 import centaur.cwl.PAPIPreprocessor
 import com.typesafe.config.ConfigFactory
-import org.scalatest.{FlatSpec, Matchers}
+import org.scalatest.{Assertion, BeforeAndAfterAll, FlatSpec, Matchers}
 
-class PAPIPreprocessorSpec extends FlatSpec with Matchers {
+class PAPIPreprocessorSpec extends FlatSpec with Matchers with BeforeAndAfterAll {
   behavior of "PAPIPreProcessor"
 
+  val tempDir = File.newTemporaryDirectory()
   val pAPIPreprocessor = new PAPIPreprocessor(ConfigFactory.load())
-  
-  def validate(result: String, expectation: String) = {
+
+  def validate(result: String, expectation: String): Assertion = {
     val parsedResult = io.circe.yaml.parser.parse(result).right.get
     val parsedExpectation = io.circe.yaml.parser.parse(expectation).right.get
 
     // This is an actual Json comparison from circe
     parsedResult shouldBe parsedExpectation
+  }
+
+  def validate(result: ProcessedWorkflow, expectation: String): Assertion = {
+    validate(result.content, expectation)
+  }
+
+  override def afterAll(): Unit = {
+    tempDir.delete(swallowIOExceptions = true)
+    super.afterAll()
   }
 
   it should "prefix files and directories in inputs" in {
@@ -103,7 +115,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin),
+           |""".stripMargin, tempDir),
       """|class: CommandLineTool
          |cwlVersion: v1.0
          |requirements:
@@ -141,7 +153,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin),
+           |""".stripMargin, tempDir),
       """|class: CommandLineTool
          |requirements:
          |  - class: DockerRequirement
@@ -180,7 +192,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |
            |baseCommand: python
            |arguments: ["bwa", "mem"]
-           |""".stripMargin),
+           |""".stripMargin, tempDir),
       """|class: CommandLineTool
          |requirements:
          |  - class: EnvVarRequirement
@@ -224,7 +236,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |baseCommand: ["/bin/bash", "-c", "echo $TEST_ENV"]
            |
            |stdout: out
-           |""".stripMargin),
+           |""".stripMargin, tempDir),
       """|class: CommandLineTool
          |cwlVersion: v1.0
          |inputs:
@@ -277,7 +289,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
            |      out: []
            |
            |  outputs: []
-           |""".stripMargin),
+           |""".stripMargin, tempDir),
       """|#!/usr/bin/env cwl-runner
          |
          |cwlVersion: v1.0
@@ -329,7 +341,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow, tempDir), workflow)
   }
 
   it should "not replace existing docker hint in an object" in {
@@ -349,7 +361,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow, tempDir), workflow)
   }
 
   it should "not replace existing docker hint in an array" in {
@@ -369,7 +381,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow, tempDir), workflow)
   }
 
   it should "not replace existing docker requirement in an array" in {
@@ -389,7 +401,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
                       |baseCommand: python
                       |arguments: ["bwa", "mem"]
                       |""".stripMargin
-    validate(pAPIPreprocessor.preProcessWorkflow(workflow), workflow)
+    validate(pAPIPreprocessor.preProcessWorkflow(workflow, tempDir), workflow)
   }
 
   it should "throw an exception if yaml / json can't be parse" in {
@@ -398,6 +410,77 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
         |{ [invalid]: }
       """.stripMargin
 
-    an[Exception] shouldBe thrownBy(pAPIPreprocessor.preProcessWorkflow(invalid))
+    an[Exception] shouldBe thrownBy(pAPIPreprocessor.preProcessWorkflow(invalid, tempDir))
+  }
+
+  it should "process nested files" in {
+    val rootWorkflow = """|class: Workflow
+                          |cwlVersion: v1.0
+                          |steps:
+                          |  step1:
+                          |    run: nestedWorkflow.cwl
+                          |  step2:
+                          |    run: tool1.cwl
+                          |""".stripMargin
+
+    val nestedWorkflowContent = """|class: Workflow
+                                   |cwlVersion: v1.0
+                                   |steps:
+                                   |  step1:
+                                   |    run: tool2.cwl
+                                   |""".stripMargin
+
+    val toolContent = """|class: CommandLineTool
+                         |cwlVersion: v1.0
+                         |""".stripMargin
+
+    (tempDir / "nestedWorkflow.cwl").write(nestedWorkflowContent)
+    (tempDir / "tool1.cwl").write(toolContent)
+    (tempDir / "tool2.cwl").write(toolContent)
+
+    val processed = pAPIPreprocessor.preProcessWorkflow(rootWorkflow, tempDir)
+
+    validate(processed, """|class: Workflow
+                           |cwlVersion: v1.0
+                           |requirements:
+                           |  - class: DockerRequirement
+                           |    dockerPull: ubuntu:latest
+                           |steps:
+                           |  step1:
+                           |    run: nestedWorkflow.cwl
+                           |  step2:
+                           |    run: tool1.cwl
+                           |""".stripMargin)
+
+    val dependencies = processed.dependencies
+    dependencies.size shouldBe 3
+
+    def dependencyContent(name: String) = {
+      dependencies.find(_.name == name).get.content
+    }
+
+    validate(dependencyContent("nestedWorkflow.cwl"), """|class: Workflow
+                                                         |cwlVersion: v1.0
+                                                         |requirements:
+                                                         |  - class: DockerRequirement
+                                                         |    dockerPull: ubuntu:latest
+                                                         |steps:
+                                                         |  step1:
+                                                         |    run: tool2.cwl
+                                                         |""".stripMargin)
+
+    validate(dependencyContent("tool1.cwl"), """|class: CommandLineTool
+                                                |requirements:
+                                                |  - class: DockerRequirement
+                                                |    dockerPull: ubuntu:latest
+                                                |cwlVersion: v1.0
+                                                |""".stripMargin)
+
+    validate(dependencyContent("tool2.cwl"), """|class: CommandLineTool
+                                                |requirements:
+                                                |  - class: DockerRequirement
+                                                |    dockerPull: ubuntu:latest
+                                                |cwlVersion: v1.0
+                                                |""".stripMargin)
   }
 }
