@@ -5,7 +5,7 @@ import centaur.cwl.CentaurCwlRunnerRunMode.{ProcessedDependency, ProcessedWorkfl
 import io.circe.optics.JsonPath.root
 import io.circe.{Json, yaml}
 
-class CwlPreprocessor {
+class CwlPreprocessor(rootDirectory: File) {
 
   protected def parse(value: String): Json = {
     yaml.parser.parse(value) match {
@@ -34,7 +34,7 @@ class CwlPreprocessor {
 
     embeddedFileNames.flatMap({ fileName =>
       // For each file, process it, and add the result to the list of nested workflows
-      val processed = collectDependencies(File(fileName).contentAsString, f)
+      val processed = collectDependencies(rootDirectory./(fileName).contentAsString, f)
       processed.dependencies :+ ProcessedDependency(fileName, processed.content)
     })
   }

@@ -1,5 +1,6 @@
 package centaur.cwl
 
+import better.files.File
 import centaur.cwl.CentaurCwlRunnerRunMode.ProcessedWorkflow
 import com.typesafe.config.Config
 import common.validation.Validation._
@@ -49,7 +50,7 @@ object CentaurCwlRunnerRunMode {
 case object LocalRunMode extends CentaurCwlRunnerRunMode {
   override lazy val description: String = "local"
   override lazy val pathBuilderFactory: PathBuilderFactory = DefaultPathBuilderFactory
-  private lazy val preprocessor = new CwlPreprocessor()
+  private lazy val preprocessor = new CwlPreprocessor(File.currentWorkingDirectory / "v1.0")
   override def preProcessWorkflow(workflow: String): ProcessedWorkflow = preprocessor.collectDependencies(workflow)
 }
 
@@ -57,7 +58,7 @@ case class PapiRunMode(conf: Config) extends CentaurCwlRunnerRunMode {
   private lazy val googleConf = GoogleConfiguration(conf)
   private lazy val authName = conf.getString("google.auth")
   private lazy val auth = googleConf.auth(authName).toTry.get
-  private lazy val preprocessor = new PAPIPreprocessor(conf)
+  private lazy val preprocessor = new PAPIPreprocessor(conf, File.currentWorkingDirectory / "v1.0")
 
   override lazy val description: String = s"papi $authName"
 

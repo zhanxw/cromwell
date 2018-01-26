@@ -1,4 +1,5 @@
 package centaur.cwl
+import better.files.File
 import com.typesafe.config.Config
 import io.circe.optics.JsonPath
 import io.circe.optics.JsonPath._
@@ -8,7 +9,7 @@ import net.ceedubs.ficus.Ficus._
 /**
   * Tools to pre-process the CWL workflows and inputs before feeding them to Cromwell so they can be executed on PAPI.
   */
-class PAPIPreprocessor(config: Config) extends CwlPreprocessor {
+class PAPIPreprocessor(config: Config, rootDirectory: File) extends CwlPreprocessor(rootDirectory) {
   // GCS directory where inputs for conformance tests are stored
   private val gcsPrefix = {
     val rawPrefix = config.as[String]("papi.default-input-gcs-prefix")

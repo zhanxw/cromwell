@@ -7,7 +7,8 @@ import org.scalatest.{Assertion, FlatSpec, Matchers}
 class PAPIPreprocessorSpec extends FlatSpec with Matchers {
   behavior of "PAPIPreProcessor"
 
-  val pAPIPreprocessor = new PAPIPreprocessor(ConfigFactory.load())
+  val tempDir = File.newTemporaryDirectory()
+  val pAPIPreprocessor = new PAPIPreprocessor(ConfigFactory.load(), tempDir)
 
   def validate(result: String, expectation: String): Assertion = {
     val parsedResult = io.circe.yaml.parser.parse(result).right.get
@@ -16,7 +17,7 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
     // This is an actual Json comparison from circe
     parsedResult shouldBe parsedExpectation
   }
-  
+
   def validate(result: ProcessedWorkflow, expectation: String): Assertion = {
     validate(result.content, expectation)
   }
@@ -408,77 +409,73 @@ class PAPIPreprocessorSpec extends FlatSpec with Matchers {
   }
 
   it should "process nested files" in {
-    val nestedWorkflowFile = File.newTemporaryFile("nestedWorkflow.cwl")
-    val nestedToolFile1 = File.newTemporaryFile("tool1.cwl")
-    val nestedToolFile2 = File.newTemporaryFile("tool2.cwl")
-    
-    val rootWorkflow = s"""|class: Workflow
+    val rootWorkflow = """|class: Workflow
                           |cwlVersion: v1.0
                           |steps:
                           |  step1:
-                          |    run: ${nestedWorkflowFile.pathAsString}
+                          |    run: nestedWorkflow.cwl
                           |  step2:
-                          |    run: ${nestedToolFile1.pathAsString}
+                          |    run: tool1.cwl
                           |""".stripMargin
 
-    val nestedWorkflowContent = s"""|class: Workflow
+    val nestedWorkflowContent = """|class: Workflow
                                    |cwlVersion: v1.0
                                    |steps:
                                    |  step1:
-                                   |    run: ${nestedToolFile2.pathAsString}
+                                   |    run: tool2.cwl
                                    |""".stripMargin
 
     val toolContent = """|class: CommandLineTool
                          |cwlVersion: v1.0
                          |""".stripMargin
 
-    nestedWorkflowFile.write(nestedWorkflowContent)
-    nestedToolFile1.write(toolContent)
-    nestedToolFile2.write(toolContent)
+    (tempDir / "nestedWorkflow.cwl").write(nestedWorkflowContent)
+    (tempDir / "tool1.cwl").write(toolContent)
+    (tempDir / "tool2.cwl").write(toolContent)
 
     val processed = pAPIPreprocessor.preProcessWorkflow(rootWorkflow)
 
-    validate(processed, s"""|class: Workflow
-                                   |cwlVersion: v1.0
-                                   |requirements:
-                                   |  - class: DockerRequirement
-                                   |    dockerPull: ubuntu:latest
-                                   |steps:
-                                   |  step1:
-                                   |    run: ${nestedWorkflowFile.pathAsString}
-                                   |  step2:
-                                   |    run: ${nestedToolFile1.pathAsString}
-                                   |""".stripMargin)
+    validate(processed, """|class: Workflow
+                           |cwlVersion: v1.0
+                           |requirements:
+                           |  - class: DockerRequirement
+                           |    dockerPull: ubuntu:latest
+                           |steps:
+                           |  step1:
+                           |    run: nestedWorkflow.cwl
+                           |  step2:
+                           |    run: tool1.cwl
+                           |""".stripMargin)
 
     val dependencies = processed.dependencies
     dependencies.size shouldBe 3
-    
+
     def dependencyContent(name: String) = {
       dependencies.find(_.name == name).get.content
-    } 
+    }
 
-    validate(dependencyContent(nestedWorkflowFile.pathAsString), s"""|class: Workflow
-                                                                  |cwlVersion: v1.0
-                                                                  |requirements:
-                                                                  |  - class: DockerRequirement
-                                                                  |    dockerPull: ubuntu:latest
-                                                                  |steps:
-                                                                  |  step1:
-                                                                  |    run: ${nestedToolFile2.pathAsString}
-                                                                  |""".stripMargin)
-
-    validate(dependencyContent(nestedToolFile1.pathAsString), """|class: CommandLineTool
+    validate(dependencyContent("nestedWorkflow.cwl"), """|class: Workflow
+                                                         |cwlVersion: v1.0
                                                          |requirements:
                                                          |  - class: DockerRequirement
                                                          |    dockerPull: ubuntu:latest
-                                                         |cwlVersion: v1.0
+                                                         |steps:
+                                                         |  step1:
+                                                         |    run: tool2.cwl
                                                          |""".stripMargin)
 
-    validate(dependencyContent(nestedToolFile2.pathAsString), """|class: CommandLineTool
-                                                         |requirements:
-                                                         |  - class: DockerRequirement
-                                                         |    dockerPull: ubuntu:latest
-                                                         |cwlVersion: v1.0
-                                                         |""".stripMargin)
+    validate(dependencyContent("tool1.cwl"), """|class: CommandLineTool
+                                                |requirements:
+                                                |  - class: DockerRequirement
+                                                |    dockerPull: ubuntu:latest
+                                                |cwlVersion: v1.0
+                                                |""".stripMargin)
+
+    validate(dependencyContent("tool1.cwl"), """|class: CommandLineTool
+                                                |requirements:
+                                                |  - class: DockerRequirement
+                                                |    dockerPull: ubuntu:latest
+                                                |cwlVersion: v1.0
+                                                |""".stripMargin)
   }
 }
