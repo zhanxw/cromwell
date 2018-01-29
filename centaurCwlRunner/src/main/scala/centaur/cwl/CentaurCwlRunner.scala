@@ -99,7 +99,13 @@ object CentaurCwlRunner extends StrictLogging {
         dependency.name -> File.newTemporaryFile().write(dependency.content)
       }).toMap
 
-      val filesToBeZipped = file.siblings.map({ sibling => sibling.name -> cwlDependencies.getOrElse(sibling.name, sibling) }).toList
+      val filesToBeZipped = file.siblings
+        .collect({ 
+          // TODO: Only include files under 1mb for now. When cwl runners run in parallel this can use a lot of space.
+          case sibling if sibling.isRegularFile && sibling.size < 1 * 1024 * 1024 => 
+            sibling.name -> cwlDependencies.getOrElse(sibling.name, sibling)
+        })
+        .toList
       
       if (!args.quiet) {
         logger.info(s"Zipping dependency files ${filesToBeZipped.map(_._1).mkString(", ")} to $zipFile")
