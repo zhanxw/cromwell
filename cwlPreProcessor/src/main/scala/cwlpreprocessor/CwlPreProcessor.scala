@@ -41,17 +41,21 @@ object CwlPreProcessor {
     CwlDecoder.saladCwlFile(file).value.unsafeRunSync()
   }
 
-  def preProcessCwlFile(file: BFile): Checked[String] = {
+  def preProcessCwlFile(file: BFile, root: Option[String]): Checked[String] = {
+    val fullString = root.map(r => s"${file.pathAsString}#$r").getOrElse(file.pathAsString)
+    val cwlReference = CwlReference(file, fullString)
+    
     def findJsonRoot(referenceMap: Map[CwlReference, Json]): Checked[Json] = {
       referenceMap.collectFirst({ 
-        case (reference, json) if reference.file.equals(file) => json
+        case (reference, json) if stripFile(reference.fullString) == cwlReference.fullString => json
       }).map(Right.apply).getOrElse(Left(NonEmptyList.one("Can't find json root")))
     }
 
     for {
       referenceMap <- createReferenceMap(file).toEither
       jsonRoot <- findJsonRoot(referenceMap)
-    } yield flattenCwl(jsonRoot, referenceMap).print
+      flattened = flattenCwl(jsonRoot, referenceMap).print
+    } yield flattened
   }
 
   private def createReferenceMap(file: BFile): ErrorOr[Map[CwlReference, Json]] = {

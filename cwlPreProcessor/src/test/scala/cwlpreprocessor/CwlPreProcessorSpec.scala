@@ -98,7 +98,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers {
     val workflowFile = tempDir./("workflow.cwl")
     workflowFile.write(rootWorkflow)
 
-    val preProcessed = CwlPreProcessor.preProcessCwlFile(workflowFile) match {
+    val preProcessed = CwlPreProcessor.preProcessCwlFile(workflowFile, Option("echo-workflow-2")) match {
       case Left(errors) => fail(errors.toList.mkString(", "))
       case Right(processed) => processed
     }
