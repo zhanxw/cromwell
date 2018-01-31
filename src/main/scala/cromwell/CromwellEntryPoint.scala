@@ -19,7 +19,6 @@ import cromwell.engine.workflow.SingleWorkflowRunnerActor
 import cromwell.engine.workflow.SingleWorkflowRunnerActor.RunWorkflow
 import cromwell.server.{CromwellServer, CromwellSystem}
 import cwlpreprocessor.CwlPreProcessor
-import cwlpreprocessor.CwlPreProcessor.PreProcessedCwl
 import net.ceedubs.ficus.Ficus._
 import org.slf4j.LoggerFactory
 
@@ -167,11 +166,11 @@ object CromwellEntryPoint extends GracefulStopSupport {
     val workflowPath = File(args.workflowSource.get.pathAsString)
 
     val workflowAndDependencies: ErrorOr[(String, Option[File])] = if (isCwl) {
-      lazy val preProcessedCwl = CwlPreProcessor.preProcessCwlFileAndZipDependencies(workflowPath).toValidated
+      lazy val preProcessedCwl = CwlPreProcessor.preProcessCwlFile(workflowPath).toValidated
 
       args.imports match {
         case Some(explicitImports) => readContent("Workflow source", args.workflowSource.get).map(_ -> Option(File(explicitImports.pathAsString)))
-        case None => preProcessedCwl.map({ case PreProcessedCwl(w, z) => w -> Option(z) })
+        case None => preProcessedCwl.map(_ -> None)
       }
     } else readContent("Workflow source", args.workflowSource.get).map(_ -> args.imports.map(p => File(p.pathAsString)))
 

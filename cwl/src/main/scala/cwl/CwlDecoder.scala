@@ -48,11 +48,13 @@ object CwlDecoder {
   /**
    * Notice it gives you one instance of Cwl.  This has transformed all embedded files into scala object state
    */
-  def decodeAllCwl(fileName: BFile, root: Option[String] = None): Parse[Cwl] =
+  def decodeAllCwl(fileName: BFile,
+                   workflowRoot: Option[String] = None,
+                   salad: Boolean = true): Parse[Cwl] =
     for {
-      jsonString <- saladCwlFile(fileName)
+      jsonString <- if(salad) saladCwlFile(fileName) else goParse(fileName.contentAsString)
       unmodifiedCwl <- parseJson(jsonString)
-      cwlWithEmbeddedCwl <- unmodifiedCwl.fold(FlattenCwlFile).apply((fileName.toString, root))
+      cwlWithEmbeddedCwl <- unmodifiedCwl.fold(FlattenCwlFile).apply((fileName.toString, workflowRoot))
     } yield cwlWithEmbeddedCwl
 
   def decodeTopLevelCwl(fileName: BFile, rootName: Option[String]): Parse[Cwl] =
@@ -78,7 +80,7 @@ object CwlDecoder {
   //This is used when traversing over Cwl and replacing links w/ embedded data
   private[cwl] def decodeCwlAsValidated(fileName: String): ParseValidated[(String, Cwl)] = {
     //The SALAD preprocess step puts "file://" as a prefix to all filenames.  Better files doesn't like this.
-    val bFileName = fileName.drop(5)
+    val bFileName = fileName.stripPrefix("file://")
 
     decodeAllCwl(BFile(bFileName)).
       map(fileName.toString -> _).

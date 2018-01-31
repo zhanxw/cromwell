@@ -54,15 +54,13 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers {
     val workflowFile = tempDir./("workflow.cwl")
     workflowFile.write(workflow)
 
-    val preProcessed = CwlPreProcessor.preProcessCwlFileAndZipDependencies(workflowFile).right.getOrElse(fail("Failed to pre process workflow"))
-
-    val dependencies = preProcessed.dependencyZip.unzip()
-  
-    (dependencies / tempDir.pathAsString / "workflow.cwl").exists shouldBe true
-    (dependencies / tempDir.pathAsString / "echo-file-tool.cwl").exists shouldBe true
+    val preProcessed = CwlPreProcessor.preProcessCwlFile(workflowFile) match {
+      case Left(errors) => fail(errors.toList.mkString(", "))
+      case Right(processed) => processed
+    }
     
     validate(
-      preProcessed.workflow,
+      preProcessed,
       s"""|{
           |  "cwlVersion" : "v1.0",
           |  "class" : "Workflow",
@@ -81,7 +79,30 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers {
           |  ],
           |  "steps" : [
           |    {
-          |      "run" : "file://${tempDir.pathAsString}/echo-file-tool.cwl",
+          |      "run" : {
+          |        "cwlVersion" : "v1.0",
+          |        "class" : "CommandLineTool",
+          |        "baseCommand" : [
+          |          "echo"
+          |        ],
+          |        "inputs" : [
+          |          {
+          |            "type" : "string",
+          |            "inputBinding" : {
+          |              "position" : 1
+          |            },
+          |            "id" : "file://${tempDir.pathAsString}/echo-file-tool.cwl#in"
+          |          }
+          |        ],
+          |        "outputs" : [
+          |          {
+          |            "type" : "string",
+          |            "valueFrom" : "hello",
+          |            "id" : "file://${tempDir.pathAsString}/echo-file-tool.cwl#out"
+          |          }
+          |        ],
+          |        "id" : "file://${tempDir.pathAsString}/echo-file-tool.cwl"
+          |      },
           |      "in" : [
           |        {
           |          "valueFrom" : "$$(inputs.tool.nameroot)",

@@ -1,12 +1,10 @@
 package cwlpreprocessor
 
 import better.files.{File => BFile}
-import cats.data.{NonEmptyList, Validated}
+import cats.data.NonEmptyList
 import cats.instances.list._
 import cats.syntax.either._
-import cats.syntax.option._
 import cats.syntax.traverse._
-import cats.syntax.validated._
 import common.Checked
 import common.validation.ErrorOr.ErrorOr
 import cwl.command.ParentName
@@ -16,18 +14,24 @@ import io.circe.optics.JsonPath._
 import mouse.all._
 
 object CwlPreProcessor {
+  case class CwlReference(file: BFile, fullString: String)
+  
+  private implicit class PrintableJson(val json: Json) extends AnyVal {
+    def print = io.circe.Printer.noSpaces.pretty(json)
+  }
+  
   private val LocalScheme = "file://"
 
   case class PreProcessedCwl(workflow: String, dependencyZip: BFile)
-  case class SaladPair(originalFile: BFile, saladedContent: String)
+  case class SaladPair(originalFile: CwlReference, saladedContent: Json)
 
   private def stripFile(in: String) = in.stripPrefix(LocalScheme)
 
-  private def fileFromRunId(in: String): Option[BFile] = {
+  private def fileAndIdFromRunId(in: String): Option[CwlReference] = {
     in.startsWith(LocalScheme).option {
-      FullyQualifiedName.maybeApply(stripFile(in))(ParentName.empty) match {
-        case Some(FileAndId(file, _, _)) => BFile(file)
-        case _ => BFile(in)
+      FullyQualifiedName.maybeApply(in)(ParentName.empty) match {
+        case Some(FileAndId(file, _, _)) => CwlReference(BFile(stripFile(file)), in)
+        case _ => CwlReference(BFile(stripFile(in)), in)
       }
     }
   }
@@ -36,43 +40,45 @@ object CwlPreProcessor {
     CwlDecoder.saladCwlFile(file).value.unsafeRunSync()
   }
 
-  def preProcessCwlFileAndZipDependencies(file: BFile, dependencyPath: BFile = BFile.newTemporaryFile("CwlDependencies")): Checked[PreProcessedCwl] = {
-    def prepareDependencyZip(saladedFiles: List[SaladPair]): BFile = {
-      val tempDir = BFile.newTemporaryDirectory("CwlPreProcessing")
-
-      saladedFiles.distinct.foreach({
-        case SaladPair(original, saladedContent) =>
-          val destination = tempDir / original.pathAsString.stripPrefix("/")
-          destination.parent.createDirectories()
-          destination.write(saladedContent)
-      })
-
-      tempDir.zipTo(dependencyPath)
-    }
-
-    def findProcessedWorkflow(saladedFiles: List[SaladPair]): Validated[NonEmptyList[String], String] = {
-      saladedFiles.collectFirst({
-        case SaladPair(original, saladedContent) if original.equals(file) => saladedContent
-      })
-        // This should not happen but since we return all the dependencies (including the original file) in a single list we have to look for it
-        .toValid(NonEmptyList.one(s"Cannot find original file ${file.pathAsString} in list of saladed files."))
+  def preProcessCwlFile(file: BFile): Checked[String] = {
+    def findJsonRoot(referenceMap: Map[CwlReference, Json]): Checked[Json] = {
+      referenceMap.collectFirst({ 
+        case (reference, json) if reference.file.equals(file) => json
+      }).map(Right.apply).getOrElse(Left(NonEmptyList.one("Can't find json root")))
     }
 
     for {
-      saladedFiles <- saladFileAndAllDependencies(file).toEither
-      saladedWorkflow <- findProcessedWorkflow(saladedFiles).toEither
-      dependencyZip = prepareDependencyZip(saladedFiles)
-    } yield PreProcessedCwl(saladedWorkflow, dependencyZip)
+      referenceMap <- createReferenceMap(file).toEither
+      jsonRoot <- findJsonRoot(referenceMap)
+    } yield flattenCwl(jsonRoot, referenceMap).print
   }
 
-  private def saladFileAndAllDependencies(file: BFile): ErrorOr[List[SaladPair]] = {
-    (for {
-      saladed <- saladCwlFile(file)
-      saladPair = SaladPair(file, saladed)
-      saladedJson <- parse(saladed)
-      runFiles <- getRunFiles(saladedJson).toEither
-      processedDependencies <- runFiles.flatTraverse(saladFileAndAllDependencies).toEither
-    } yield processedDependencies :+ saladPair).toValidated
+  private def createReferenceMap(file: BFile): ErrorOr[Map[CwlReference, Json]] = {
+    def saladFileAndAllDependenciesRec(file: BFile): ErrorOr[List[(CwlReference, Json)]] = {
+      (for {
+        saladed <- saladCwlFile(file)
+        saladedJson <- parse(saladed)
+        referenceMap = mapIdToContent(saladedJson)
+        runFiles = getRunFiles(saladedJson).map(_.file)
+        processedDependencies <- runFiles.flatTraverse(saladFileAndAllDependenciesRec).toEither
+      } yield processedDependencies ++ referenceMap).toValidated
+    }
+
+    saladFileAndAllDependenciesRec(file).map(_.toMap)
+  }
+  
+  private def flattenCwl(rootJson: Json, referenceMap: Map[CwlReference, Json]): Json = {
+    def lookupSaladedJsonForRunId(json: Json): Json = {
+      val fromMap = for {
+        asString <- json.asString
+        runFile <- fileAndIdFromRunId(asString)
+        embbeddedJson <- referenceMap.get(runFile)
+      } yield flattenCwl(embbeddedJson, referenceMap)
+
+      fromMap.getOrElse(json)
+    }
+
+    replaceRuns(lookupSaladedJsonForRunId, rootJson)(rootJson)
   }
 
   private def parse(cwlContent: String): Checked[Json] = {
@@ -81,10 +87,26 @@ object CwlPreProcessor {
   }
 
   // Organize the tools and workflows in the json by pairing them with their ID
-  private def getRunFiles(json: Json): ErrorOr[List[BFile]] = {
+  private def getRunFiles(json: Json): List[CwlReference] = {
     json.asArray match {
-      case Some(cwls) => cwls.toList.flatTraverse[ErrorOr, BFile](getRunFiles)
-      case _ => root.steps.each.run.string.getAll(json).flatMap(fileFromRunId).distinct.validNel
+      case Some(cwls) => cwls.toList.flatMap(getRunFiles)
+      case _ => root.steps.each.run.string.getAll(json).flatMap(fileAndIdFromRunId).distinct
     }
   }
+
+  // Organize the tools and workflows in the json by pairing them with their ID
+  private def mapIdToContent(json: Json): List[(CwlReference, Json)] = {
+    json.asArray match {
+      case Some(cwls) => cwls.toList.flatMap(mapIdToContent)
+      case None => root.id.string.getOption(json).flatMap(fileAndIdFromRunId).map(_ -> json).toList
+    }
+  }
+
+  // Organize the tools and workflows in the json by pairing them with their ID
+  private def replaceRuns(f: Json => Json, json: Json): Json => Json = {
+    json.isArray
+      .option(root.each.steps.each.run.json.modify(f)).
+      getOrElse(root.steps.each.run.json.modify(f))
+  }
+    
 }
