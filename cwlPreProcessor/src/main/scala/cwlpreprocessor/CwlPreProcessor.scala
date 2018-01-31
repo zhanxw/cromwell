@@ -37,6 +37,7 @@ object CwlPreProcessor {
   }
 
   def saladCwlFile(file: BFile): Checked[String] = {
+    println("Salading " + file.pathAsString)
     CwlDecoder.saladCwlFile(file).value.unsafeRunSync()
   }
 
@@ -54,17 +55,17 @@ object CwlPreProcessor {
   }
 
   private def createReferenceMap(file: BFile): ErrorOr[Map[CwlReference, Json]] = {
-    def saladFileAndAllDependenciesRec(file: BFile): ErrorOr[List[(CwlReference, Json)]] = {
+    def saladFileAndAllDependenciesRec(currentReferenceMap: List[(CwlReference, Json)])(file: BFile): ErrorOr[List[(CwlReference, Json)]] = {
       (for {
         saladed <- saladCwlFile(file)
         saladedJson <- parse(saladed)
-        referenceMap = mapIdToContent(saladedJson)
-        runFiles = getRunFiles(saladedJson).map(_.file)
-        processedDependencies <- runFiles.flatTraverse(saladFileAndAllDependenciesRec).toEither
-      } yield processedDependencies ++ referenceMap).toValidated
+        newReferenceMap = mapIdToContent(saladedJson) ++ currentReferenceMap
+        runFiles = getRunFiles(saladedJson).map(_.file).filterNot(newReferenceMap.map(_._1.file).contains)
+        processedDependencies <- runFiles.flatTraverse(saladFileAndAllDependenciesRec(newReferenceMap)).toEither
+      } yield processedDependencies ++ newReferenceMap).toValidated
     }
 
-    saladFileAndAllDependenciesRec(file).map(_.toMap)
+    saladFileAndAllDependenciesRec(List.empty)(file).map(_.toMap)
   }
   
   private def flattenCwl(rootJson: Json, referenceMap: Map[CwlReference, Json]): Json = {

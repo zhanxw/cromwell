@@ -13,7 +13,50 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers {
   }
 
   it should "resolve relative imports" in {
-    val workflow =
+    val rootWorkflow =
+      """|cwlVersion: v1.0
+         |$graph:
+         |- id: echo-workflow-1
+         |  class: Workflow
+         |  requirements:
+         |    - class: StepInputExpressionRequirement
+         |  inputs:
+         |    tool: File
+         |  outputs: []
+         |  steps:
+         |    root:
+         |      run: echo-file-tool.cwl
+         |      in:
+         |        tool: tool
+         |        in:
+         |          valueFrom: $(inputs.tool.nameroot)
+         |      out: [out]
+         |
+         |- id: echo-workflow-2
+         |  class: Workflow
+         |  requirements:
+         |    - class: StepInputExpressionRequirement
+         |  inputs:
+         |    tool: File
+         |  outputs: []
+         |  steps:
+         |    root1:
+         |      run: inner-workflow.cwl
+         |      in:
+         |        tool: tool
+         |        in:
+         |          valueFrom: $(inputs.tool.nameroot)
+         |      out: [out]
+         |    root2:
+         |      run: "#echo-workflow-1"
+         |      in:
+         |        tool: tool
+         |        in:
+         |          valueFrom: $(inputs.tool.nameroot)
+         |      out: [out]
+      """.stripMargin
+    
+    val innerWorkflow =
       """|cwlVersion: v1.0
          |class: Workflow
          |
@@ -51,8 +94,9 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers {
       """.stripMargin
 
     tempDir./("echo-file-tool.cwl").write(echoFileTool)
+    tempDir./("inner-workflow.cwl").write(innerWorkflow)
     val workflowFile = tempDir./("workflow.cwl")
-    workflowFile.write(workflow)
+    workflowFile.write(rootWorkflow)
 
     val preProcessed = CwlPreProcessor.preProcessCwlFile(workflowFile) match {
       case Left(errors) => fail(errors.toList.mkString(", "))
