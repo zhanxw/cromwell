@@ -18,7 +18,7 @@ object CwlDecoder {
 
   implicit val composedApplicative = Applicative[IO] compose Applicative[ErrorOr]
 
-  private def preprocess(path: BFile): Parse[String] = {
+  def saladCwlFile(path: BFile): Parse[String] = {
     def resultToEither(cr: CommandResult) =
       cr.exitCode match {
         case 0 => Right(cr.out.string)
@@ -50,14 +50,14 @@ object CwlDecoder {
    */
   def decodeAllCwl(fileName: BFile, root: Option[String] = None): Parse[Cwl] =
     for {
-      jsonString <- preprocess(fileName)
+      jsonString <- saladCwlFile(fileName)
       unmodifiedCwl <- parseJson(jsonString)
       cwlWithEmbeddedCwl <- unmodifiedCwl.fold(FlattenCwlFile).apply((fileName.toString, root))
     } yield cwlWithEmbeddedCwl
 
   def decodeTopLevelCwl(fileName: BFile, rootName: Option[String]): Parse[Cwl] =
     for {
-      jsonString <- preprocess(fileName)
+      jsonString <- saladCwlFile(fileName)
       unmodifiedCwl <- parseJson(jsonString)
       rootCwl <- EitherT.fromEither(unmodifiedCwl.fold(FlattenCwlFile.CwlFileRoot).apply(rootName)): Parse[Cwl]
     } yield rootCwl

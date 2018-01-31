@@ -1,15 +1,18 @@
 package cromwell
 
+import java.net.URL
+
 import common.util.VersionUtil
 import cromwell.core.WorkflowOptions
 import cromwell.core.path.{DefaultPathBuilder, Path}
-import scopt.OptionParser
+import scopt.{OptionDef, OptionParser}
 
 object CommandLineParser extends App {
 
   sealed trait Command
   case object Run extends Command
   case object Server extends Command
+  case object Submit extends Command
 
   case class CommandLineArguments(command: Option[Command] = None,
                                   workflowSource: Option[Path] = None,
@@ -20,7 +23,8 @@ object CommandLineParser extends App {
                                   workflowTypeVersion: Option[String] = WorkflowOptions.defaultWorkflowTypeVersion,
                                   workflowLabels: Option[Path] = None,
                                   imports: Option[Path] = None,
-                                  metadataOutput: Option[Path] = None
+                                  metadataOutput: Option[Path] = None,
+                                  host: URL = new URL("http://localhost:8000")
                                  )
 
   lazy val cromwellVersion = VersionUtil.getVersion("cromwell")
@@ -49,19 +53,11 @@ object CommandLineParser extends App {
 
   def buildParser(): scopt.OptionParser[CommandLineArguments] = {
     new scopt.OptionParser[CommandLineArguments]("java -jar /path/to/cromwell.jar") {
-      head("cromwell", cromwellVersion)
-
-      help("help").text("Cromwell - Workflow Execution Engine")
-
-      version("version")
-
-      cmd("server").action((_, c) => c.copy(command = Option(Server))).text(
-        "Starts a web server on port 8000.  See the web server documentation for more details about the API endpoints.")
-
-      cmd("run").
-        action((_, c) => c.copy(command = Option(Run))).
-        text("Run the workflow and print out the outputs in JSON format.").
-        children(
+      def addRunSubCommands(
+                             command:  OptionDef[Unit, CommandLineArguments],
+                             additionalChildren: List[OptionDef[_, CommandLineArguments]] = List.empty
+                           ) = {
+        val children = List(
           arg[String]("workflow-source").text("Workflow source file.").required().
             action((s, c) => c.copy(workflowSource = Option(DefaultPathBuilder.get(s)))),
           opt[String]("workflow-root").text("Workflow root.").
@@ -90,7 +86,34 @@ object CommandLineParser extends App {
             "An optional directory path to output metadata.").
             action((s, c) =>
               c.copy(metadataOutput = Option(DefaultPathBuilder.get(s))))
-        )
+        ) ++ additionalChildren
+        
+        command.children(children: _*)
+      }
+      
+      head("cromwell", cromwellVersion)
+
+      help("help").text("Cromwell - Workflow Execution Engine")
+
+      version("version")
+
+      cmd("server").action((_, c) => c.copy(command = Option(Server))).text(
+        "Starts a web server on port 8000.  See the web server documentation for more details about the API endpoints.")
+
+      val run = cmd("run")
+                  .action((_, c) => c.copy(command = Option(Run))).
+                  text("Run the workflow and print out the outputs in JSON format.")
+      
+      val submit = cmd("submit")
+                    .action((_, c) => c.copy(command = Option(Submit))).
+                    text("Submit the workflow to a Cromwell server.")
+
+      addRunSubCommands(run)
+      addRunSubCommands(submit, List(
+        opt[String]('h', "host").text("Workflow server host. Only used for the submit command").
+          action((h, c) =>
+            c.copy(host = new URL(h)))
+      ))
     }
   }
 
@@ -98,6 +121,7 @@ object CommandLineParser extends App {
     args.command match {
       case Some(Run) => CromwellEntryPoint.runSingle(args)
       case Some(Server) => CromwellEntryPoint.runServer()
+      case Some(Submit) => CromwellEntryPoint.submitToServer(args)
       case None => parser.showUsage()
     }
   }

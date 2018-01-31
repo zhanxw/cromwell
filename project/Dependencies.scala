@@ -301,6 +301,10 @@ object Dependencies {
     "io.circe" %% "circe-optics" % circeV
   ) ++ slf4jBindingDependencies ++ circeDependencies
 
+  val cwlPreProcessorDependencies = List(
+    "io.circe" %% "circe-optics" % circeV
+  )
+
   val coreDependencies = List(
     "com.typesafe.akka" %% "akka-actor" % akkaV,
     "com.typesafe.akka" %% "akka-testkit" % akkaV % Test,

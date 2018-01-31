@@ -128,6 +128,10 @@ lazy val engine = project
   .dependsOn(gcsFileSystem % "test->test")
   .dependsOn(ossFileSystem % "test->test")
 
+lazy val cwlPreProcessor = project
+  .withLibrarySettings("cwlPreProcessor", cwlPreProcessorDependencies)
+  .dependsOn(cwl)
+
 // Executables
 
 lazy val centaurCwlRunner = project
@@ -170,6 +174,8 @@ lazy val root = (project in file("."))
   .dependsOn(sparkBackend)
   .dependsOn(wdlDraft2LanguageFactory)
   .dependsOn(cwlV1_0LanguageFactory)
+  .dependsOn(cwlPreProcessor)
+  .dependsOn(cromwellApiClient)
   .dependsOn(engine % "test->test")
   // Full list of all sub-projects to build with the root (ex: include in `sbt test`)
   .aggregate(backend)
@@ -180,6 +186,7 @@ lazy val root = (project in file("."))
   .aggregate(cloudSupport)
   .aggregate(cromwellApiClient)
   .aggregate(cwl)
+  .aggregate(cwlPreProcessor)
   .aggregate(databaseMigration)
   .aggregate(databaseSql)
   .aggregate(dockerHashing)
