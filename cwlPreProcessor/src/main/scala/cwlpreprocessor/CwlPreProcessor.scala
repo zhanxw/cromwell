@@ -5,6 +5,7 @@ import cats.data.NonEmptyList
 import cats.syntax.either._
 import common.Checked
 import common.validation.Validation._
+import common.validation.Checked._
 import cwl.command.ParentName
 import cwl.{CwlDecoder, FileAndId, FullyQualifiedName}
 import cwlpreprocessor.CwlPreProcessor._
@@ -24,7 +25,7 @@ object CwlPreProcessor {
         }
       }
     }
-    
+
     def apply(file: BFile, pointer: Option[String]) = {
       // prepends file:// to the absolute file path
       val prefixedFile = s"$LocalScheme${file.pathAsString}"
@@ -63,14 +64,14 @@ object CwlPreProcessor {
 }
 
 class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
-  
+
   def preProcessCwlFile(file: BFile, cwlRoot: Option[String]): Checked[String] = {
-    processCwlReference(CwlReference(file, cwlRoot), Map.empty) map {
+    flattenCwlReference(CwlReference(file, cwlRoot), Map.empty) map {
       case (result, _) => result.print
     }
   }
 
-  private def processCwlReference(cwlReference: CwlReference, knownReferences: Map[CwlReference, Json]): Either[NonEmptyList[String], (Json, Map[CwlReference, Json])] = {
+  private def flattenCwlReference(cwlReference: CwlReference, knownReferences: Map[CwlReference, Json]): Checked[(Json, Map[CwlReference, Json])] = {
     for {
       // parse the file containing the reference
       parsed <- saladAndParse(cwlReference.file)
@@ -79,41 +80,38 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
       // The reference node in the file
       referenceNode <- cwlNodes.get(cwlReference).toChecked(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
       // Process the reference node
-      processed = flattenJson(referenceNode, cwlNodes - cwlReference, knownReferences)
+      processed <- flattenJson(referenceNode, cwlNodes - cwlReference, knownReferences)
     } yield processed
   }
 
-  private def flattenJson(saladedJson: Json, unProcessedSiblings: Map[CwlReference, Json], processedReferences: Map[CwlReference, Json]): (Json, Map[CwlReference, Json]) = {
+  private def processCwlReference(unProcessedSiblings: Map[CwlReference, Json])
+                                 (checkedProcessedReferences: Checked[Map[CwlReference, Json]], cwlReference: CwlReference): Checked[Map[CwlReference, Json]] = {
+    checkedProcessedReferences flatMap { processedReferences =>
+      // If the reference has already been processed, no need to do anything
+      if (processedReferences.contains(cwlReference)) processedReferences.validNelCheck
+      else {
+        // Otherwise let's see if it's a reference to another node in the same file (what is called sibling here)
+        val result: Checked[(Json, Map[CwlReference, Json])] = unProcessedSiblings.get(cwlReference) match {
+          // If yes, then flatten this sibling reference, note that we remove ourselves from the list of siblings
+          // This is in case there is a cyclic dependency between this reference and its sibling, the sibling will fail to be flattened instead of infinitely looping
+          case Some(referencedSibling) => flattenJson(referencedSibling, unProcessedSiblings - cwlReference, processedReferences)
+          // If not, simply flatten this new reference  
+          case None => flattenCwlReference(cwlReference, processedReferences)
+        }
 
-    def processRunReferences(runReferences: List[CwlReference]): Map[CwlReference, Json] = {
-      runReferences.foldLeft(processedReferences)({
-        case (accumulatedReferences, currentReference) =>
-          accumulatedReferences.get(currentReference) match {
-            case Some(_) =>
-              accumulatedReferences
-            case None =>
-              unProcessedSiblings.get(currentReference) match {
-                case Some(referencedSibling) =>
-                  val (processed, newReferences) = flattenJson(referencedSibling, unProcessedSiblings - currentReference, accumulatedReferences)
-                  accumulatedReferences ++ newReferences + (currentReference -> processed)
-                case None =>
-                  val parsed = saladAndParse(currentReference.file).right.get
-                  val unProcessedCwlNodes = mapIdToContent(parsed).toMap
-                  // we know it's in there because we just parsed the file of the reference
-                  val jsonToProcess = unProcessedCwlNodes(currentReference)
-                  val unProcessedSiblings = unProcessedCwlNodes - currentReference
-                  val (processed, newReferences) = flattenJson(jsonToProcess, unProcessedSiblings, accumulatedReferences)
-                  accumulatedReferences ++ newReferences + (currentReference -> processed)
-              }
-          }
-      })
+        result map {
+          // Return everything we got ("processedReferences", "processed" and whatever was done to process our reference ("newReferences"))
+          case (processed, newReferences) => processedReferences ++ newReferences + (cwlReference -> processed)
+        }
+      }
     }
+  }
 
-    val runReferences = findRunReferences(saladedJson)
-    val newKnownReferences = processRunReferences(runReferences)
-    
-    val lookupFunction = {
-      json: Json => {
+  private def flattenJson(saladedJson: Json, unProcessedSiblings: Map[CwlReference, Json], processedReferences: Map[CwlReference, Json]): Checked[(Json, Map[CwlReference, Json])] = {
+    findRunReferences(saladedJson)
+      .foldLeft(processedReferences.validNelCheck)(processCwlReference(unProcessedSiblings)) map { newKnownReferences =>
+
+      val lookupFunction = json: Json => {
         val fromMap = for {
           asString <- json.asString
           reference <- asString.asReference
@@ -122,9 +120,9 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
 
         fromMap.getOrElse(json)
       }
-    }
 
-    root.steps.each.run.json.modify(lookupFunction)(saladedJson) -> newKnownReferences
+      root.steps.each.run.json.modify(lookupFunction)(saladedJson) -> newKnownReferences
+    }
   }
 
   /**
@@ -141,7 +139,7 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
     * as well as a (possibly nested) array of CWL nodes.
     * A saladed json is assumed.
     * For instance:
-    * 
+    *
     * [
     *   {
     *     "id": "file:///path/to/workflow/workflow.cwl#my_first_workflow",
@@ -168,14 +166,14 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
     *     ]
     *   }
     * ]
-    * 
+    *
     * will return 
     * List(
     *   CwlReference(file:///path/to/workflow/other_workflow.cwl,        "file:///path/to/workflow/other_workflow.cwl")
     *   CwlReference(file:///path/to/workflow/not_the_same_workflow.cwl, "file:///path/to/workflow/not_the_same_workflow.cwl#sometool")
     *   CwlReference(file:///path/to/workflow/workflow.cwl,              "file:///path/to/workflow/workflow.cwl#my_first_workflow")
     * )
-    * 
+    *
     * Note that the second workflow has a step that references the first workflow, in the same file
     */
   private def findRunReferences(json: Json): List[CwlReference] = {
