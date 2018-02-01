@@ -4,6 +4,7 @@ import better.files.{File => BFile}
 import cats.data.NonEmptyList
 import cats.syntax.either._
 import common.Checked
+import common.validation.Validation._
 import cwl.command.ParentName
 import cwl.{CwlDecoder, FileAndId, FullyQualifiedName}
 import cwlpreprocessor.CwlPreProcessor._
@@ -14,52 +15,73 @@ import mouse.all._
 object CwlPreProcessor {
   private val LocalScheme = "file://"
 
-  case class CwlReference(file: BFile, fullString: String)
+  object CwlReference {
+    def fromString(in: String) = {
+      in.startsWith(LocalScheme).option {
+        FullyQualifiedName.maybeApply(in)(ParentName.empty) match {
+          case Some(FileAndId(file, _, _)) => CwlReference(BFile(file.stripFilePrefix), in)
+          case _ => CwlReference(BFile(in.stripFilePrefix), in)
+        }
+      }
+    }
+    
+    def apply(file: BFile, pointer: Option[String]) = {
+      // prepends file:// to the absolute file path
+      val prefixedFile = s"$LocalScheme${file.pathAsString}"
+      val fullReference = pointer.map(p => s"$prefixedFile#$p").getOrElse(prefixedFile)
+      new CwlReference(file, fullReference)
+    }
+  }
+
+  /**
+    * Saladed CWLs reference other local CWL "node" using a URI as follow:
+    * file:///path/to/file/containing/node.cwl[#pointer_to_node]
+    * #pointer_to_node to node is optional, and will specify which workflow or tool is being targeted if the file
+    * is a JSON array.
+    * @param file: the file containing the referenced node. e.g: File(/path/to/file/containing/node.cwl)
+    * @param fullReference: the full reference string as it is found in the saladed json. e.g: "file:///path/to/file/containing/node.cwl#pointer_to_node"
+    */
+  case class CwlReference(file: BFile, fullReference: String)
+
+  /**
+    * A Cwl node that has been processed (saladed and flattened)
+    */
+  case class ProcessedNode(json: Json)
+  case class UnProcessedNode(json: Json)
+  case class ProcessResult(processedNode: ProcessedNode, processedDependencies: Map[CwlReference, ProcessedNode])
+
+  val saladCwlFile: BFile => Checked[String] = { file => CwlDecoder.saladCwlFile(file).value.unsafeRunSync() }
 
   implicit class PrintableJson(val json: Json) extends AnyVal {
     def print = io.circe.Printer.noSpaces.pretty(json)
   }
 
   implicit class EnhancedCwlId(val id: String) extends AnyVal {
-    def asReference: Option[CwlReference] = {
-      id.startsWith(LocalScheme).option {
-        FullyQualifiedName.maybeApply(id)(ParentName.empty) match {
-          case Some(FileAndId(file, _, _)) => CwlReference(BFile(file.stripFilePrefix), id)
-          case _ => CwlReference(BFile(id.stripFilePrefix), id)
-        }
-      }
-    }
-
+    def asReference: Option[CwlReference] = CwlReference.fromString(id)
     def stripFilePrefix = id.stripPrefix(LocalScheme)
-  }
-
-  case class PreProcessedCwl(workflow: String, dependencyZip: BFile)
-  case class SaladPair(originalFile: CwlReference, saladedContent: Json)
-
-  val saladCwlFile: BFile => Checked[String] = { file =>
-    println("Salading " + file.pathAsString)
-    CwlDecoder.saladCwlFile(file).value.unsafeRunSync()
   }
 }
 
 class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
+  
   def preProcessCwlFile(file: BFile, cwlRoot: Option[String]): Checked[String] = {
-    val fullString = cwlRoot.map(r => s"$LocalScheme${file.pathAsString}#$r").getOrElse(file.pathAsString)
-    val cwlReference = CwlReference(file, fullString)
-
-    for {
-      parsed <- saladAndParse(file)
-      alNodes = mapIdToContent(parsed).toMap
-      jsonRoot = alNodes(cwlReference)
-      (flattened, _) = flattenJson(jsonRoot, alNodes - cwlReference, Map.empty)
-    } yield flattened.print
+    processCwlReference(CwlReference(file, cwlRoot), Map.empty) map {
+      case (result, _) => result.print
+    }
   }
 
-  private def saladAndParse(file: BFile): Checked[Json] = for {
-    saladed <- saladFunction(file)
-    saladedJson <- parse(saladed)
-  } yield saladedJson
-
+  private def processCwlReference(cwlReference: CwlReference, knownReferences: Map[CwlReference, Json]): Either[NonEmptyList[String], (Json, Map[CwlReference, Json])] = {
+    for {
+      // parse the file containing the reference
+      parsed <- saladAndParse(cwlReference.file)
+      // Get a Map[CwlReference, Json] from the parsed file. If the file is a JSON object and only contains one node, the map will only have 1 element 
+      cwlNodes = mapIdToContent(parsed).toMap
+      // The reference node in the file
+      referenceNode <- cwlNodes.get(cwlReference).toChecked(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
+      // Process the reference node
+      processed = flattenJson(referenceNode, cwlNodes - cwlReference, knownReferences)
+    } yield processed
+  }
 
   private def flattenJson(saladedJson: Json, unProcessedSiblings: Map[CwlReference, Json], processedReferences: Map[CwlReference, Json]): (Json, Map[CwlReference, Json]) = {
 
@@ -106,11 +128,12 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
   }
 
   /**
-    * Parse a string to Json
+    * Salad and parse a string to Json
     */
-  private def parse(cwlContent: String): Checked[Json] = {
-    io.circe.parser.parse(cwlContent).leftMap(error => NonEmptyList.one(error.message))
-  }
+  private def saladAndParse(file: BFile): Checked[Json] = for {
+    saladed <- saladFunction(file)
+    saladedJson <- io.circe.parser.parse(saladed).leftMap(error => NonEmptyList.one(error.message))
+  } yield saladedJson
 
   /**
     * Given a json, collects all "steps.run" values that are JSON Strings, and convert them to CwlReferences.
