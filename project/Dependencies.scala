@@ -302,7 +302,8 @@ object Dependencies {
   ) ++ slf4jBindingDependencies ++ circeDependencies
 
   val cwlPreProcessorDependencies = List(
-    "io.circe" %% "circe-optics" % circeV
+    "io.circe" %% "circe-optics" % circeV,
+    "org.scalamock" %% "scalamock" % "4.0.0" % Test
   )
 
   val coreDependencies = List(

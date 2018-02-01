@@ -38,6 +38,8 @@ object CromwellEntryPoint extends GracefulStopSupport {
 
   val gracefulShutdown = config.as[Boolean]("system.graceful-server-shutdown")
 
+  lazy val cwlPreProcessor = new CwlPreProcessor()
+
   /**
     * Run Cromwell in server mode.
     */
@@ -164,9 +166,9 @@ object CromwellEntryPoint extends GracefulStopSupport {
     import cats.syntax.either._
     def isCwl = args.workflowType.exists(_.equalsIgnoreCase("cwl"))
     val workflowPath = File(args.workflowSource.get.pathAsString)
-
+    
     val workflowAndDependencies: ErrorOr[(String, Option[File])] = if (isCwl) {
-      lazy val preProcessedCwl = CwlPreProcessor.preProcessCwlFile(workflowPath).toValidated
+      lazy val preProcessedCwl = cwlPreProcessor.preProcessCwlFile(workflowPath, None).toValidated
 
       args.imports match {
         case Some(explicitImports) => readContent("Workflow source", args.workflowSource.get).map(_ -> Option(File(explicitImports.pathAsString)))
@@ -203,7 +205,7 @@ object CromwellEntryPoint extends GracefulStopSupport {
     val workflowPath = File(args.workflowSource.get.pathAsString)
 
     val workflowSource = if (isCwl) {
-      CwlPreProcessor.saladCwlFile(workflowPath).toValidated: ErrorOr[String]
+      cwlPreProcessor.saladCwlFile(workflowPath).toValidated: ErrorOr[String]
     } else readContent("Workflow source", args.workflowSource.get)
 
     val inputsJson = readJson("Workflow inputs", args.workflowInputs)
