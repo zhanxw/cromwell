@@ -12,6 +12,7 @@ import common.util.VersionUtil
 import cromwell.api.model.{Aborted, Failed, NonTerminalStatus, Succeeded}
 import cromwell.core.WorkflowOptions
 import cromwell.core.path.PathBuilderFactory
+import cwl.preprocessor.CwlPreProcessor
 import spray.json._
 
 import scala.concurrent.Await
@@ -80,22 +81,7 @@ object CentaurCwlRunner extends StrictLogging {
   }
 
   private def runCentaur(args: CommandLineArguments): ExitCode.Value = {
-
-    def zipSiblings(file: File): File = {
-      val zipFile = File.newTemporaryFile("cwl_imports.", ".zip")
-      val dir = file.parent
-      if (!args.quiet) {
-        logger.info(s"Zipping files under 1mb in $dir to $zipFile")
-      }
-      // TODO: Only include files under 1mb for now. When cwl runners run in parallel this can use a lot of space.
-      val files = dir
-        .children
-        .filter(_.isRegularFile)
-        .filter(_.size < 1 * 1024 * 1024)
-      Cmds.zip(files.toSeq: _*)(zipFile)
-      zipFile
-    }
-
+    val cwlPreProcessor = new CwlPreProcessor()
     val workflowPath = args.workflowSource.get
     val (parsedWorkflowPath, workflowRoot) = workflowPath.path.toAbsolutePath.toString.split("#") match {
       case Array(file) => File(file) -> None
@@ -103,7 +89,10 @@ object CentaurCwlRunner extends StrictLogging {
     }
     val outdirOption = args.outdir.map(_.pathAsString)
     val testName = workflowPath.name
-    val workflowContents = centaurCwlRunnerRunMode.preProcessWorkflow(parsedWorkflowPath.contentAsString)
+    val preProcessedCwl = cwlPreProcessor
+      .preProcessCwlFileToString(parsedWorkflowPath, workflowRoot)
+      .valueOr(errors => throw new Exception (s"failed to pre process workflow: ${errors.toList.mkString(", ")}"))
+    val workflowContents = centaurCwlRunnerRunMode.preProcessWorkflow(preProcessedCwl)
     val inputContents = args.workflowInputs.map(_.contentAsString) map centaurCwlRunnerRunMode.preProcessInput
     val workflowType = Option("cwl")
     val workflowTypeVersion = None
@@ -111,7 +100,7 @@ object CentaurCwlRunner extends StrictLogging {
       JsObject("cwl_outdir" -> JsString(outdir)).compactPrint
     }
     val labels = List.empty
-    val zippedImports = Option(zipSiblings(workflowPath)) // TODO: Zipping all the things! Be more selective.
+    val zippedImports = None
     val backends = AllBackendsRequired(List.empty)
     val workflowMetadata = None
     val notInMetadata = List.empty
@@ -162,15 +151,6 @@ object CentaurCwlRunner extends StrictLogging {
               ExitCode.Success
           }
       }
-    } finally {
-      zippedImports map { zipFile =>
-        if (!args.quiet) {
-          logger.info(s"Deleting $zipFile")
-        }
-        zipFile.delete(swallowIOExceptions = true)
-      }
-      Await.result(CentaurCromwellClient.system.terminate(), Duration.Inf)
-      ()
     }
   }
 
