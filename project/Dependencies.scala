@@ -297,6 +297,10 @@ object Dependencies {
   ) ++ circeDependencies ++ womDependencies ++ refinedTypeDependenciesList ++ betterFilesDependencies
 
   val womtoolDependencies = catsDependencies ++ slf4jBindingDependencies
+  
+  val cromwellClientInterfacelDependencies = List(
+    "com.github.scopt" %% "scopt" % scoptV
+  )
 
   val centaurCwlRunnerDependencies = List(
     "com.github.scopt" %% "scopt" % scoptV,

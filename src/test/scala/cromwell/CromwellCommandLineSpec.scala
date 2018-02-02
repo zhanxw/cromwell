@@ -1,7 +1,8 @@
 package cromwell
 
-import cromwell.CommandLineParser.{CommandLineArguments, Run, Server}
+import cromwell.CommandLineParser.{Run, Server}
 import cromwell.CromwellCommandLineSpec.WdlAndInputs
+import cromwell.client.CommandLineArguments
 import cromwell.core.path.{DefaultPathBuilder, Path}
 import cromwell.util.SampleWdl
 import cromwell.util.SampleWdl.{FileClobber, FilePassingWorkflow, ThreeStep}
@@ -74,7 +75,7 @@ class CromwellCommandLineSpec extends FlatSpec with Matchers with BeforeAndAfter
 
   it should "fail if input files do not exist" in {
     val parsedArgs = parser.parse(Array("run", "xyzshouldnotexist.wdl", "--inputs", "xyzshouldnotexist.inputs", "--options", "xyzshouldnotexist.options"), CommandLineArguments()).get
-    val validation = Try(CromwellEntryPoint.validateRunArguments(parsedArgs))
+    val validation = Try(CromwellEntryPoint.toWorkflowSourcesCollection(parsedArgs))
 
     validation.isFailure shouldBe true
     validation.failed.get.getMessage should include("Workflow source does not exist")
@@ -86,7 +87,7 @@ class CromwellCommandLineSpec extends FlatSpec with Matchers with BeforeAndAfter
     val threeStep = WdlAndInputs(ThreeStep)
     val parsedArgs = parser.parse(Array("run", threeStep.wdl, "--inputs", threeStep.inputs), CommandLineArguments()).get
     threeStep.inputsFile setPermissions Set.empty
-    val ccl = Try(CromwellEntryPoint.validateRunArguments(parsedArgs))
+    val ccl = Try(CromwellEntryPoint.toWorkflowSourcesCollection(parsedArgs))
     ccl.isFailure shouldBe true
     ccl.failed.get.getMessage should include("Workflow inputs is not readable")
   }
@@ -96,7 +97,7 @@ class CromwellCommandLineSpec extends FlatSpec with Matchers with BeforeAndAfter
     val parsedArgs = parser.parse(Array("run", threeStep.wdl, "--inputs", threeStep.inputs, "--metadata-output", threeStep.metadata), CommandLineArguments()).get
     threeStep.metadataFile write "foo"
     threeStep.metadataFile setPermissions Set.empty
-    val ccl = Try(CromwellEntryPoint.validateRunArguments(parsedArgs))
+    val ccl = Try(CromwellEntryPoint.toWorkflowSourcesCollection(parsedArgs))
     ccl.isFailure shouldBe true
     ccl.failed.get.getMessage should include("Unable to write to metadata directory:")
   }
@@ -113,7 +114,7 @@ class CromwellCommandLineSpec extends FlatSpec with Matchers with BeforeAndAfter
     val zippedPath = zippedDir.pathAsString
 
     val parsedArgs = parser.parse(Array("run", filePassing.pathAsString, "--imports", zippedPath), CommandLineArguments()).get
-    val ccl = Try(CromwellEntryPoint.validateRunArguments(parsedArgs))
+    val ccl = Try(CromwellEntryPoint.toWorkflowSourcesCollection(parsedArgs))
     ccl.isFailure shouldBe false
 
     zippedDir.delete(swallowIOExceptions = true)
