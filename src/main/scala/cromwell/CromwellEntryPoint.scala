@@ -18,7 +18,7 @@ import cromwell.core.{WorkflowSourceFilesCollection, WorkflowSourceFilesWithDepe
 import cromwell.engine.workflow.SingleWorkflowRunnerActor
 import cromwell.engine.workflow.SingleWorkflowRunnerActor.RunWorkflow
 import cromwell.server.{CromwellServer, CromwellSystem}
-import cwlpreprocessor.CwlPreProcessor
+import cwl.preprocessor.CwlPreProcessor
 import net.ceedubs.ficus.Ficus._
 import org.slf4j.LoggerFactory
 
@@ -163,12 +163,11 @@ object CromwellEntryPoint extends GracefulStopSupport {
   }
 
   def validateSubmitArguments(args: CommandLineArguments): WorkflowSingleSubmission = {
-    import cats.syntax.either._
     def isCwl = args.workflowType.exists(_.equalsIgnoreCase("cwl"))
     val workflowPath = File(args.workflowSource.get.pathAsString)
     
     val workflowAndDependencies: ErrorOr[(String, Option[File])] = if (isCwl) {
-      lazy val preProcessedCwl = cwlPreProcessor.preProcessCwlFile(workflowPath, None).toValidated
+      lazy val preProcessedCwl = cwlPreProcessor.preProcessCwlFileToString(workflowPath, None)
 
       args.imports match {
         case Some(explicitImports) => readContent("Workflow source", args.workflowSource.get).map(_ -> Option(File(explicitImports.pathAsString)))
@@ -205,7 +204,7 @@ object CromwellEntryPoint extends GracefulStopSupport {
     val workflowPath = File(args.workflowSource.get.pathAsString)
 
     val workflowSource = if (isCwl) {
-      CwlPreProcessor.saladCwlFile(workflowPath).toValidated: ErrorOr[String]
+      CwlPreProcessor.saladCwlFile(workflowPath).value.unsafeRunSync().toValidated: ErrorOr[String]
     } else readContent("Workflow source", args.workflowSource.get)
 
     val inputsJson = readJson("Workflow inputs", args.workflowInputs)

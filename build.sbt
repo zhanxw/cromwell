@@ -128,10 +128,6 @@ lazy val engine = project
   .dependsOn(gcsFileSystem % "test->test")
   .dependsOn(ossFileSystem % "test->test")
 
-lazy val cwlPreProcessor = project
-  .withLibrarySettings("cwlPreProcessor", cwlPreProcessorDependencies)
-  .dependsOn(cwl)
-
 // Executables
 
 lazy val centaurCwlRunner = project
@@ -167,6 +163,7 @@ lazy val root = (project in file("."))
   // Next level of projects to include in the fat jar (their dependsOn will be transitively included)
   // Must 'dependsOn' any projects which might be loaded at runtime from the fat jar
   // NB: even if you 'dependsOn' a project, you still need to aggregate it (c'est la vie...)
+  .dependsOn(cwl)
   .dependsOn(engine)
   .dependsOn(jesBackend)
   .dependsOn(bcsBackend)
@@ -174,7 +171,6 @@ lazy val root = (project in file("."))
   .dependsOn(sparkBackend)
   .dependsOn(wdlDraft2LanguageFactory)
   .dependsOn(cwlV1_0LanguageFactory)
-  .dependsOn(cwlPreProcessor)
   .dependsOn(cromwellApiClient)
   .dependsOn(engine % "test->test")
   // Full list of all sub-projects to build with the root (ex: include in `sbt test`)
@@ -186,7 +182,6 @@ lazy val root = (project in file("."))
   .aggregate(cloudSupport)
   .aggregate(cromwellApiClient)
   .aggregate(cwl)
-  .aggregate(cwlPreProcessor)
   .aggregate(databaseMigration)
   .aggregate(databaseSql)
   .aggregate(dockerHashing)

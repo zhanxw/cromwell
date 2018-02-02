@@ -1,8 +1,8 @@
-package cwlpreprocessor
+package cwl.preprocessor
 
 import better.files.File
 import cats.data.NonEmptyList
-import common.Checked
+import common.validation.Parse.Parse
 import org.scalamock.function.MockFunction1
 import org.scalamock.scalatest.MockFactory
 import org.scalatest.{FlatSpec, Matchers}
@@ -76,11 +76,11 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
   def validate[T](testRoot: File,
                   root: Option[String],
                   expectedFailure: Option[NonEmptyList[String]] = None
-                 )(additionalValidation: MockFunction1[File, Checked[String]] => T) = {
+                 )(additionalValidation: MockFunction1[File, Parse[String]] => T) = {
     val rootWorkflow = testRoot / "root_workflow.cwl"
 
     // Mocking the salad function allows us to validate how many times it is called exactly and with which parameters
-    val mockSaladingFunction = mockFunction[File, Checked[String]]
+    val mockSaladingFunction = mockFunction[File, Parse[String]]
     val preProcessor = new CwlPreProcessor(mockSaladingFunction)
 
     val saladExpectations = additionalValidation
@@ -90,7 +90,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
     // Asserts that dependencies are only saladed once and exactly once
     inAnyOrder(saladExpectations(mockSaladingFunction))
 
-    val process = preProcessor.preProcessCwlFile(rootWorkflow, root)
+    val process = preProcessor.preProcessCwlFile(rootWorkflow, root).value.unsafeRunSync()
 
     (process, expectedFailure) match {
       case (Left(errors), Some(failures)) => errors shouldBe failures
@@ -99,7 +99,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
         val expectationContent = (testRoot / "expected_result.json").contentAsString
           .replaceAll("<<RESOURCES_ROOT>>", resourcesRoot.pathAsString)
 
-        io.circe.parser.parse(result) shouldBe io.circe.parser.parse(expectationContent)
+        result shouldBe io.circe.parser.parse(expectationContent)
       case (Right(_), Some(failures)) => fail("Unexpected success to pre-process workflow, was expecting failures: " + failures.toList.mkString(", "))
     }
   }

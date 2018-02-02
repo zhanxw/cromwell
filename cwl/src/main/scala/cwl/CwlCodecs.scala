@@ -40,6 +40,8 @@ object CwlCodecs {
     */
   def decodeCwl(in: String): Checked[CwlFile] =
     decodeWithErrorStrings[CwlFile](in).leftMap(_ => decodePieces(in)).toEither
+  
+  def decodeCwl2(in: Json): Checked[Cwl] = in.as[Cwl].leftMap(error => NonEmptyList.one(error.message))
 
   private def decodeWithErrorStrings[A](in: String)(implicit d: Decoder[A]): ErrorOr[A] =
     decodeAccumulating[A](in).leftMap(_.map(_.show))

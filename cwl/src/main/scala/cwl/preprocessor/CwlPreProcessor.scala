@@ -1,14 +1,15 @@
-package cwlpreprocessor
+package cwl.preprocessor
 
 import better.files.{File => BFile}
 import cats.data.NonEmptyList
 import cats.syntax.either._
-import common.Checked
+import common.validation.ErrorOr.ErrorOr
+import common.validation.Parse
 import common.validation.Validation._
-import common.validation.Checked._
+import common.validation.Parse._
 import cwl.command.ParentName
 import cwl.{CwlDecoder, FileAndId, FullyQualifiedName}
-import cwlpreprocessor.CwlPreProcessor._
+import cwl.preprocessor.CwlPreProcessor._
 import io.circe.Json
 import io.circe.optics.JsonPath._
 import mouse.all._
@@ -16,7 +17,7 @@ import mouse.all._
 object CwlPreProcessor {
   private val LocalScheme = "file://"
 
-  private [cwlpreprocessor] object CwlReference {
+  private [preprocessor] object CwlReference {
     def fromString(in: String) = {
       in.startsWith(LocalScheme).option {
         FullyQualifiedName.maybeApply(in)(ParentName.empty) match {
@@ -57,26 +58,26 @@ object CwlPreProcessor {
     * @param file: the file containing the referenced node. e.g: File(/path/to/file/containing/node.cwl)
     * @param fullReference: the full reference string as it is found in the saladed json. e.g: "file:///path/to/file/containing/node.cwl#pointer_to_node"
     */
-  private [cwlpreprocessor] case class CwlReference(file: BFile, fullReference: String) {
+  private [preprocessor] case class CwlReference(file: BFile, fullReference: String) {
     override def toString = fullReference
   }
 
-  private [cwlpreprocessor] type BreadCrumb = List[CwlReference]
-  private [cwlpreprocessor] type ProcessedReferences = Map[CwlReference, Json]
-  private [cwlpreprocessor] type UnProcessedReferences = Map[CwlReference, Json]
+  private [preprocessor] type BreadCrumb = List[CwlReference]
+  private [preprocessor] type ProcessedReferences = Map[CwlReference, Json]
+  private [preprocessor] type UnProcessedReferences = Map[CwlReference, Json]
 
   /**
     * A Cwl json that has been processed (saladed and flattened), as well as its processed dependencies.
     */
   private case class ProcessedJsonAndDependencies(processedJson: Json, processedDependencies: ProcessedReferences)
 
-  val saladCwlFile: BFile => Checked[String] = { file => CwlDecoder.saladCwlFile(file).value.unsafeRunSync() }
+  val saladCwlFile: BFile => Parse[String] = { file => CwlDecoder.saladCwlFile(file) }
 
-  private [cwlpreprocessor] implicit class PrintableJson(val json: Json) extends AnyVal {
-    def print = io.circe.Printer.noSpaces.pretty(json)
+  implicit class PrintableJson(val json: Json) extends AnyVal {
+    def printCompact = io.circe.Printer.noSpaces.pretty(json)
   }
 
-  private [cwlpreprocessor] implicit class EnhancedCwlId(val id: String) extends AnyVal {
+  private [preprocessor] implicit class EnhancedCwlId(val id: String) extends AnyVal {
     def asReference: Option[CwlReference] = CwlReference.fromString(id)
     def stripFilePrefix = id.stripPrefix(LocalScheme)
   }
@@ -86,7 +87,7 @@ object CwlPreProcessor {
   * Class to create a standalone version of a CWL file.
   * @param saladFunction function that takes a file and produce a saladed version of the content
   */
-class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
+class CwlPreProcessor(saladFunction: BFile => Parse[String] = saladCwlFile) {
 
   /**
     * Pre-process a CWL file and create a standalone, runnable (given proper inputs), inlined version of its content.
@@ -96,7 +97,7 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
     * its flat version.
     *
     * There are 3 pieces of information that are carried around during this process:
-    *  1) ProcessedReferences: A Map[CwlReference, Json] of CwlReference for which we have the saladed AND flattened Json value.
+    *  1) ProcessedReferences: A Map[CwlReference, Json] of CwlReference for which we have the fully processed (saladed AND flattened) Json value.
     *
     *  2) UnProcessedReferences: A Map[CwlReference, Json] of CwlReference for which we have the saladed but NOT flattened Json value.
     *     This can happen because a file can contain multiple tools / workflows. When we salad / parse this file, we get (CwlReference, Json) pairs
@@ -107,10 +108,17 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
     *     This is used to be able to detect circular dependencies (if the cwlReference being processed is in that list, then we have a circular dependency) .
     *
     */
-  def preProcessCwlFile(file: BFile, cwlRoot: Option[String]): Checked[String] = {
+  def preProcessCwlFile(file: BFile, cwlRoot: Option[String]): Parse[Json] = {
     flattenCwlReference(CwlReference(file, cwlRoot), Map.empty, Map.empty, Set.empty) map {
-      case ProcessedJsonAndDependencies(result, _) => result.json.print
+      case ProcessedJsonAndDependencies(result, _) => result.json
     }
+  }
+
+  /**
+    * Convenience method to get the processed workflow as a string.
+    */
+  def preProcessCwlFileToString(file: BFile, cwlRoot: Option[String]): ErrorOr[String] = {
+    preProcessCwlFile(file, cwlRoot).value.unsafeRunSync().map(_.printCompact).toValidated
   }
 
   /**
@@ -119,14 +127,14 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
   private def flattenCwlReference(cwlReference: CwlReference,
                                   unProcessedReferences: UnProcessedReferences,
                                   processedReferences: ProcessedReferences,
-                                  breadCrumbs: Set[CwlReference]): Checked[ProcessedJsonAndDependencies] = {
+                                  breadCrumbs: Set[CwlReference]): Parse[ProcessedJsonAndDependencies] = {
     for {
       // parse the file containing the reference
       parsed <- saladAndParse(cwlReference.file)
       // Get a Map[CwlReference, Json] from the parsed file. If the file is a JSON object and only contains one node, the map will only have 1 element 
       newUnProcessedReferences = mapIdToContent(parsed).toMap
       // The reference json in the file
-      referenceJson <- newUnProcessedReferences.get(cwlReference).toChecked(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
+      referenceJson <- newUnProcessedReferences.get(cwlReference).toParse(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
       // Process the reference json
       processed <- flattenJson(referenceJson, newUnProcessedReferences ++ unProcessedReferences, processedReferences, breadCrumbs + cwlReference)
     } yield processed
@@ -142,16 +150,16 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
     */
   private def processCwlRunReference(unProcessedReferences: UnProcessedReferences,
                                      breadCrumbs: Set[CwlReference])
-                                    (checkedProcessedReferences: Checked[ProcessedReferences],
-                                     cwlReference: CwlReference): Checked[ProcessedReferences] = {
+                                    (checkedProcessedReferences: Parse[ProcessedReferences],
+                                     cwlReference: CwlReference): Parse[ProcessedReferences] = {
     checkedProcessedReferences flatMap { processedReferences =>
       // If the reference has already been processed, no need to do anything
-      if (processedReferences.contains(cwlReference)) processedReferences.validNelCheck
+      if (processedReferences.contains(cwlReference)) processedReferences.validParse
       // If the reference is in the bread crumbs it means we circled back to it: fail the pre-processing
-      else if (breadCrumbs.contains(cwlReference)) s"Found a circular dependency on $cwlReference".invalidNelCheck
+      else if (breadCrumbs.contains(cwlReference)) s"Found a circular dependency on $cwlReference".invalidParse
       else {
         // Otherwise let's see if we already have the json for it or if we need to process the file
-        val result: Checked[ProcessedJsonAndDependencies] = unProcessedReferences.get(cwlReference) match {
+        val result: Parse[ProcessedJsonAndDependencies] = unProcessedReferences.get(cwlReference) match {
           case Some(unProcessedReferenceJson) =>
             // Found the json in the unprocessed map, no need to reparse the file, just flatten this json
             flattenJson(unProcessedReferenceJson, unProcessedReferences, processedReferences, breadCrumbs)
@@ -178,10 +186,10 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
   private def flattenJson(saladedJson: Json,
                           unProcessedReferences: UnProcessedReferences,
                           processedReferences: ProcessedReferences,
-                          breadCrumbs: Set[CwlReference]): Checked[ProcessedJsonAndDependencies] = {
+                          breadCrumbs: Set[CwlReference]): Parse[ProcessedJsonAndDependencies] = {
     val foldFunction = processCwlRunReference(unProcessedReferences, breadCrumbs) _
 
-    findRunReferences(saladedJson.json).foldLeft(processedReferences.validNelCheck)(foldFunction) map { newKnownReferences =>
+    findRunReferences(saladedJson.json).foldLeft(processedReferences.validParse)(foldFunction) map { newKnownReferences =>
 
       // Provide a function to swap the run reference with its json content
       val lookupFunction = {
@@ -203,9 +211,9 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
   /**
     * Salad and parse a string to Json
     */
-  private def saladAndParse(file: BFile): Checked[Json] = for {
+  private def saladAndParse(file: BFile): Parse[Json] = for {
     saladed <- saladFunction(file)
-    saladedJson <- io.circe.parser.parse(saladed).leftMap(error => NonEmptyList.one(error.message))
+    saladedJson <- Parse.checkedParse(io.circe.parser.parse(saladed).leftMap(error => NonEmptyList.one(error.message)))
   } yield saladedJson
 
   /**

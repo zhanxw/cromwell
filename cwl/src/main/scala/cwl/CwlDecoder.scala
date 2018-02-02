@@ -8,9 +8,10 @@ import cats.data.{EitherT, NonEmptyList}
 import cats.effect.IO
 import cats.syntax.either._
 import cats.{Applicative, Monad}
-import common.legacy.TwoElevenSupport._
 import common.validation.ErrorOr._
 import common.validation.Parse._
+import cwl.preprocessor.CwlPreProcessor
+import io.circe.Json
 
 import scala.util.Try
 
@@ -27,11 +28,13 @@ object CwlDecoder {
 
     val cwlToolResult =
       Try(%%("cwltool", "--quiet", "--print-pre", path.toString)).
-        tacticalToEither.
+        toEither.
         leftMap(t => NonEmptyList.one(s"running cwltool on file ${path.toString} failed with ${t.getMessage}"))
 
     fromEither[IO](cwlToolResult flatMap resultToEither)
   }
+  
+  lazy val cwlPreProcessor = new CwlPreProcessor()
 
   // TODO: WOM: During conformance testing the saladed-CWLs are referring to files in the temp directory.
   // Thus we can't delete the temp directory until after the workflow is complete, like the workflow logs.
@@ -43,26 +46,19 @@ object CwlDecoder {
     }
   }
 
-  def parseJson(json: String): Parse[CwlFile] = fromEither[IO](CwlCodecs.decodeCwl(json))
+  def parseJson(json: Json): Parse[Cwl] = fromEither[IO](CwlCodecs.decodeCwl2(json))
 
   /**
    * Notice it gives you one instance of Cwl.  This has transformed all embedded files into scala object state
    */
   def decodeAllCwl(fileName: BFile,
-                   workflowRoot: Option[String] = None,
-                   salad: Boolean = true): Parse[Cwl] =
+                   workflowRoot: Option[String] = None): Parse[Cwl] =
     for {
-      jsonString <- if(salad) saladCwlFile(fileName) else goParse(fileName.contentAsString)
-      unmodifiedCwl <- parseJson(jsonString)
-      cwlWithEmbeddedCwl <- unmodifiedCwl.fold(FlattenCwlFile).apply((fileName.toString, workflowRoot))
-    } yield cwlWithEmbeddedCwl
+      standaloneWorkflow <- cwlPreProcessor.preProcessCwlFile(fileName, workflowRoot)
+      parsedCwl <- parseJson(standaloneWorkflow)
+    } yield parsedCwl
 
-  def decodeTopLevelCwl(fileName: BFile, rootName: Option[String]): Parse[Cwl] =
-    for {
-      jsonString <- saladCwlFile(fileName)
-      unmodifiedCwl <- parseJson(jsonString)
-      rootCwl <- EitherT.fromEither(unmodifiedCwl.fold(FlattenCwlFile.CwlFileRoot).apply(rootName)): Parse[Cwl]
-    } yield rootCwl
+  def decodeTopLevelCwl(fileName: BFile, rootName: Option[String]): Parse[Cwl] = decodeAllCwl(fileName, rootName)
 
   def decodeTopLevelCwl(cwl: String, zipOption: Option[BFile] = None, rootName: Option[String] = None): Parse[Cwl] = {
     for {
