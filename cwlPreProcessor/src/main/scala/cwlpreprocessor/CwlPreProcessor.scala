@@ -109,11 +109,11 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
       // parse the file containing the reference
       parsed <- saladAndParse(cwlReference.file)
       // Get a Map[CwlReference, Json] from the parsed file. If the file is a JSON object and only contains one node, the map will only have 1 element 
-      cwlNodes = mapIdToContent(parsed).toMap
+      unProcessedReferences = mapIdToContent(parsed).toMap
       // The reference json in the file
-      referenceJson <- cwlNodes.get(cwlReference).toChecked(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
+      referenceJson <- unProcessedReferences.get(cwlReference).toChecked(s"Cannot find a tool or workflow with ID ${cwlReference.fullReference} in file ${cwlReference.file.pathAsString}")
       // Process the reference json
-      processed <- flattenJson(referenceJson, cwlNodes - cwlReference, processedReferences)
+      processed <- flattenJson(referenceJson, unProcessedReferences, processedReferences)
     } yield processed
   }
 
@@ -136,7 +136,7 @@ class CwlPreProcessor(saladFunction: BFile => Checked[String] = saladCwlFile) {
         val result: Checked[ProcessedJsonAndDependencies] = unProcessedRerences.get(cwlReference) match {
           case Some(unProcessedReferenceJson) => 
             // Found the json in the unprocessed map, no need to reparse the file, just flatten this json
-            flattenJson(unProcessedReferenceJson, unProcessedRerences - cwlReference, processedReferences)
+            flattenJson(unProcessedReferenceJson, unProcessedRerences, processedReferences)
           case None =>
             // This is the first time we're seeing this reference, we need to parse its file and flatten the reference 
             flattenCwlReference(cwlReference, processedReferences)
