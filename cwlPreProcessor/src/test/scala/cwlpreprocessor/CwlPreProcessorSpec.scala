@@ -1,6 +1,7 @@
 package cwlpreprocessor
 
 import better.files.File
+import cats.data.NonEmptyList
 import common.Checked
 import org.scalamock.function.MockFunction1
 import org.scalamock.scalatest.MockFactory
@@ -15,29 +16,57 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
   val echoFileTool = resourcesRoot / "echo_tool.cwl"
 
   it should "flatten a simple file" in {
-    validate("simple_workflow", None) { mockSaladingFunction =>
+    validate(makeTestRoot("simple_workflow"), None) { mockSaladingFunction =>
       mockSaladingFunction.expects(echoFileTool).onCall(CwlPreProcessor.saladCwlFile)
     }
   }
 
   it should "flatten file with a self reference" in {
-    validate("self_reference", Option("echo-workflow-2")) { _ => }
+    validate(makeTestRoot("self_reference"), Option("echo-workflow-2")) { _ => }
   }
 
   it should "flatten file with a sub workflow and self reference" in {
-    val subWorkflow =  resourcesRoot / "complex_workflow" / "sub" / "sub_workflow.cwl"
-    validate("complex_workflow", Option("echo-workflow-2")) { mockSaladingFunction =>
+    val testRoot = makeTestRoot("complex_workflow")
+    val subWorkflow =  testRoot / "sub" / "sub_workflow.cwl"
+
+    validate(testRoot, Option("echo-workflow-2")) { mockSaladingFunction =>
       mockSaladingFunction.expects(echoFileTool).onCall(CwlPreProcessor.saladCwlFile)
       mockSaladingFunction.expects(subWorkflow).onCall(CwlPreProcessor.saladCwlFile)
     }
   }
 
   it should "detect cyclic dependencies in the same file and fail" in {
-    validate("same_file_cyclic_dependency", Option("echo-workflow-2")) {  _ => }
+    val testRoot = makeTestRoot("same_file_cyclic_dependency")
+
+    validate(testRoot, Option("echo-workflow-2"),
+      expectedFailure = Option(
+        NonEmptyList.one(s"Found a circular dependency on file://$testRoot/root_workflow.cwl#echo-workflow-2")
+      )
+    ) { _ => }
   }
 
-  def validate[T](testDirectory: String, root: Option[String])(additionalValidation: MockFunction1[File, Checked[String]] => T) = {
-    val testRoot = resourcesRoot / testDirectory
+  it should "detect transitive cyclic dependencies (A => B => C => A) and fail" in {
+    val testRoot = makeTestRoot("transitive_cyclic_dependency")
+
+    val subWorkflow1 = testRoot / "sub_workflow_1.cwl"
+    val subWorkflow2 =  testRoot / "sub_workflow_2.cwl"
+
+    validate(testRoot, None,
+      expectedFailure = Option(
+        NonEmptyList.one(s"Found a circular dependency on file://$testRoot/root_workflow.cwl")
+      )
+    ) { mockSaladingFunction =>
+      mockSaladingFunction.expects(subWorkflow1).onCall(CwlPreProcessor.saladCwlFile)
+      mockSaladingFunction.expects(subWorkflow2).onCall(CwlPreProcessor.saladCwlFile)
+    }
+  }
+
+  def makeTestRoot(testDirectoryName: String) = resourcesRoot / testDirectoryName
+
+  def validate[T](testRoot: File,
+                  root: Option[String],
+                  expectedFailure: Option[NonEmptyList[String]] = None
+                 )(additionalValidation: MockFunction1[File, Checked[String]] => T) = {
     val rootWorkflow = testRoot / "root_workflow.cwl"
 
     // Mocking the salad function allows us to validate how many times it is called exactly and with which parameters
@@ -51,15 +80,17 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
     // Asserts that dependencies are only saladed once and exactly once
     inAnyOrder(saladExpectations(mockSaladingFunction))
 
-    val preProcessed = preProcessor.preProcessCwlFile(rootWorkflow, root) match {
-      case Left(errors) => fail("Failed to pre-process workflow: " + errors.toList.mkString(", "))
-      case Right(processed) => processed
+    val process = preProcessor.preProcessCwlFile(rootWorkflow, root)
+
+    (process, expectedFailure) match {
+      case (Left(errors), Some(failures)) => errors shouldBe failures
+      case (Left(errors), None) => fail("Unexpected failure to pre-process workflow: " + errors.toList.mkString(", "))
+      case (Right(result), None) =>
+        val expectationContent = (testRoot / "expected_result.json").contentAsString
+          .replaceAll("<<RESOURCES_ROOT>>", resourcesRoot.pathAsString)
+
+        io.circe.parser.parse(result) shouldBe io.circe.parser.parse(expectationContent)
+      case (Right(_), Some(failures)) => fail("Unexpected success to pre-process workflow, was expecting failures: " + failures.toList.mkString(", "))
     }
-
-    val expectationContent = (testRoot / "expected_result.json")
-      .contentAsString
-      .replaceAll("<<RESOURCES_ROOT>>", resourcesRoot.pathAsString)
-
-    io.circe.parser.parse(preProcessed) shouldBe io.circe.parser.parse(expectationContent)
   }
 }
