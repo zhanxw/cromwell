@@ -2,6 +2,7 @@ package cwl.preprocessor
 
 import better.files.File
 import cats.data.NonEmptyList
+import cats.syntax.either._
 import common.validation.Parse.Parse
 import org.scalamock.function.MockFunction1
 import org.scalamock.scalatest.MockFactory
@@ -99,7 +100,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
         val expectationContent = (testRoot / "expected_result.json").contentAsString
           .replaceAll("<<RESOURCES_ROOT>>", resourcesRoot.pathAsString)
 
-        result shouldBe io.circe.parser.parse(expectationContent)
+        result.asRight shouldBe io.circe.parser.parse(expectationContent)
       case (Right(_), Some(failures)) => fail("Unexpected success to pre-process workflow, was expecting failures: " + failures.toList.mkString(", "))
     }
   }
