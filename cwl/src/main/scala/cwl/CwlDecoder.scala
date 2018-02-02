@@ -48,7 +48,7 @@ object CwlDecoder {
     }
   }
 
-  def parseJson(json: Json): Parse[Cwl] = fromEither[IO](CwlCodecs.decodeCwl2(json))
+  def parseJson(json: Json): Parse[Cwl] = fromEither[IO](CwlCodecs.decodeCwl(json))
 
   /**
    * Notice it gives you one instance of Cwl.  This has transformed all embedded files into scala object state
