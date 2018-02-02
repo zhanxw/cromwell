@@ -25,7 +25,17 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
     validate(makeTestRoot("self_reference"), Option("echo-workflow-2")) { _ => }
   }
 
-  it should "flatten file with a sub workflow and self reference" in {
+  /*
+    * A "valid" cyclic dependency means for example
+    * file_1
+    *   - workflow_1 -> depends on workflow_3
+    *   - workflow_2
+    * file_2
+    *   - workflow_3 -> depends on workflow_2
+    * workflow_1 (in file_1) references a workflow in file_2 that references a workflow in file_1,
+    * but that's ok since the cycle is only over the file, not the workflows themselves.
+   */
+  it should "flatten file with sub workflow, self reference and valid cyclic dependency" in {
     val testRoot = makeTestRoot("complex_workflow")
     val subWorkflow =  testRoot / "sub" / "sub_workflow.cwl"
 
@@ -35,7 +45,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
     }
   }
 
-  it should "detect cyclic dependencies in the same file and fail" in {
+  it should "detect invalid cyclic dependencies in the same file and fail" in {
     val testRoot = makeTestRoot("same_file_cyclic_dependency")
 
     validate(testRoot, Option("echo-workflow-2"),
@@ -45,7 +55,7 @@ class CwlPreProcessorSpec extends FlatSpec with Matchers with MockFactory {
     ) { _ => }
   }
 
-  it should "detect transitive cyclic dependencies (A => B => C => A) and fail" in {
+  it should "detect invalid transitive cyclic dependencies (A => B => C => A) and fail" in {
     val testRoot = makeTestRoot("transitive_cyclic_dependency")
 
     val subWorkflow1 = testRoot / "sub_workflow_1.cwl"

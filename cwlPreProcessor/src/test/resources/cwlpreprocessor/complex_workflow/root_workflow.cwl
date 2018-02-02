@@ -9,7 +9,7 @@ $graph:
   outputs: []
   steps:
     root1:
-      run: sub/sub_workflow.cwl
+      run: "sub/sub_workflow.cwl#sub-echo-workflow-1"
       in:
         tool: tool
         in:

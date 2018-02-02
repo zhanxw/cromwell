@@ -17,7 +17,7 @@
   "steps" : [
     {
       "run" : {
-        "cwlVersion" : "v1.0",
+        "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1",
         "class" : "Workflow",
         "requirements" : [
           {
@@ -27,7 +27,7 @@
         "inputs" : [
           {
             "type" : "File",
-            "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#tool"
+            "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/tool"
           }
         ],
         "outputs" : [
@@ -35,46 +35,80 @@
         "steps" : [
           {
             "run" : {
-              "cwlVersion" : "v1.0",
-              "class" : "CommandLineTool",
-              "baseCommand" : [
-                "echo"
+              "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1",
+              "class" : "Workflow",
+              "requirements" : [
+                {
+                  "class" : "StepInputExpressionRequirement"
+                }
               ],
               "inputs" : [
                 {
-                  "type" : "string",
-                  "inputBinding" : {
-                    "position" : 1
-                  },
-                  "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl#in"
+                  "type" : "File",
+                  "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/tool"
                 }
               ],
               "outputs" : [
-                {
-                  "type" : "string",
-                  "valueFrom" : "hello",
-                  "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl#out"
-                }
               ],
-              "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl"
+              "steps" : [
+                {
+                  "run" : {
+                    "cwlVersion" : "v1.0",
+                    "class" : "CommandLineTool",
+                    "baseCommand" : [
+                      "echo"
+                    ],
+                    "inputs" : [
+                      {
+                        "type" : "string",
+                        "inputBinding" : {
+                          "position" : 1
+                        },
+                        "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl#in"
+                      }
+                    ],
+                    "outputs" : [
+                      {
+                        "type" : "string",
+                        "valueFrom" : "hello",
+                        "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl#out"
+                      }
+                    ],
+                    "id" : "file://<<RESOURCES_ROOT>>/echo_tool.cwl"
+                  },
+                  "in" : [
+                    {
+                      "valueFrom" : "$(inputs.tool.nameroot)",
+                      "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/root/in"
+                    },
+                    {
+                      "source" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/tool",
+                      "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/root/tool"
+                    }
+                  ],
+                  "out" : [
+                    "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/root/out"
+                  ],
+                  "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/root_workflow.cwl#echo-workflow-1/root"
+                }
+              ]
             },
             "in" : [
               {
                 "valueFrom" : "$(inputs.tool.nameroot)",
-                "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#root/in"
+                "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/root/in"
               },
               {
-                "source" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#tool",
-                "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#root/tool"
+                "source" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/tool",
+                "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/root/tool"
               }
             ],
             "out" : [
-              "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#root/out"
+              "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/root/out"
             ],
-            "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#root"
+            "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl#sub-echo-workflow-1/root"
           }
-        ],
-        "id" : "file://<<RESOURCES_ROOT>>/complex_workflow/sub/sub_workflow.cwl"
+        ]
       },
       "in" : [
         {
