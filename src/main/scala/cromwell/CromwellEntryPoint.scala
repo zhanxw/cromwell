@@ -205,7 +205,7 @@ object CromwellEntryPoint extends GracefulStopSupport {
     val workflowPath = File(args.workflowSource.get.pathAsString)
 
     val workflowSource = if (isCwl) {
-      cwlPreProcessor.saladCwlFile(workflowPath).toValidated: ErrorOr[String]
+      CwlPreProcessor.saladCwlFile(workflowPath).toValidated: ErrorOr[String]
     } else readContent("Workflow source", args.workflowSource.get)
 
     val inputsJson = readJson("Workflow inputs", args.workflowInputs)
