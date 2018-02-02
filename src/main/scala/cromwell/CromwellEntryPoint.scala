@@ -167,6 +167,7 @@ object CromwellEntryPoint extends GracefulStopSupport {
     val workflowPath = File(args.workflowSource.get.pathAsString)
     
     val workflowAndDependencies: ErrorOr[(String, Option[File])] = if (isCwl) {
+      EntryPointLogger.info("Pre Processing Workflow...")
       lazy val preProcessedCwl = cwlPreProcessor.preProcessCwlFileToString(workflowPath, None)
 
       args.imports match {
@@ -199,20 +200,25 @@ object CromwellEntryPoint extends GracefulStopSupport {
   }
 
   def validateRunArguments(args: CommandLineArguments): WorkflowSourceFilesCollection = {
-    import cats.syntax.either._
     val isCwl = args.workflowType.exists(_.equalsIgnoreCase("cwl"))
     val workflowPath = File(args.workflowSource.get.pathAsString)
 
-    val workflowSource = if (isCwl) {
-      CwlPreProcessor.saladCwlFile(workflowPath).value.unsafeRunSync().toValidated: ErrorOr[String]
-    } else readContent("Workflow source", args.workflowSource.get)
+    lazy val preProcessedCwl = cwlPreProcessor.preProcessCwlFileToString(workflowPath, None)
+    
+    val workflowSource: ErrorOr[(String, Option[Array[Byte]])] = if (isCwl) {
+      EntryPointLogger.info("Pre Processing Workflow...")
+      args.imports match {
+        case Some(explicitImports) => readContent("Workflow source", args.workflowSource.get).map(_ -> Option(explicitImports.loadBytes))
+        case None => preProcessedCwl.map(_ -> None)
+      }
+    } else readContent("Workflow source", args.workflowSource.get).map(_ -> args.imports.map(p => p.loadBytes))
 
     val inputsJson = readJson("Workflow inputs", args.workflowInputs)
     val optionsJson = readJson("Workflow options", args.workflowOptions)
     val labelsJson = readJson("Workflow labels", args.workflowLabels)
 
-    val sourceFileCollection = args.imports match {
-      case Some(p) => (workflowSource, inputsJson, optionsJson, labelsJson) mapN { (w, i, o, l) =>
+    val sourceFileCollection = (workflowSource, inputsJson, optionsJson, labelsJson) mapN {
+        case ((w, Some(p)), i, o, l) =>
         WorkflowSourceFilesWithDependenciesZip.apply(
           workflowSource = w,
           workflowRoot = args.workflowRoot,
@@ -221,10 +227,9 @@ object CromwellEntryPoint extends GracefulStopSupport {
           inputsJson = i,
           workflowOptionsJson = o,
           labelsJson = l,
-          importsZip = p.loadBytes,
+          importsZip = p,
           warnings = Vector.empty)
-      }
-      case None => (workflowSource, inputsJson, optionsJson, labelsJson) mapN { (w, i, o, l) =>
+      case ((w, None), i, o, l) =>
         WorkflowSourceFilesWithoutImports.apply(
           workflowSource = w,
           workflowRoot = args.workflowRoot,
@@ -236,7 +241,6 @@ object CromwellEntryPoint extends GracefulStopSupport {
           warnings = Vector.empty
         )
       }
-    }
 
     val sourceFiles = for {
       sources <- sourceFileCollection

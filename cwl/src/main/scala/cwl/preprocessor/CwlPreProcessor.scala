@@ -13,8 +13,10 @@ import cwl.preprocessor.CwlPreProcessor._
 import io.circe.Json
 import io.circe.optics.JsonPath._
 import mouse.all._
+import org.slf4j.LoggerFactory
 
 object CwlPreProcessor {
+  private val Log = LoggerFactory.getLogger("CwlPreProcessor")
   private val LocalScheme = "file://"
 
   private [preprocessor] object CwlReference {
@@ -71,7 +73,10 @@ object CwlPreProcessor {
     */
   private case class ProcessedJsonAndDependencies(processedJson: Json, processedDependencies: ProcessedReferences)
 
-  val saladCwlFile: BFile => Parse[String] = { file => CwlDecoder.saladCwlFile(file) }
+  val saladCwlFile: BFile => Parse[String] = { file =>
+    Log.debug(s"Salading ${file.pathAsString}")
+    CwlDecoder.saladCwlFile(file) 
+  }
 
   implicit class PrintableJson(val json: Json) extends AnyVal {
     def printCompact = io.circe.Printer.noSpaces.pretty(json)

@@ -4,7 +4,7 @@ import ammonite.ops.ImplicitWd._
 import ammonite.ops._
 import better.files.{File => BFile}
 import cats.data.EitherT._
-import cats.data.{EitherT, NonEmptyList}
+import cats.data.NonEmptyList
 import cats.effect.IO
 import cats.syntax.either._
 import cats.{Applicative, Monad}
@@ -51,16 +51,14 @@ object CwlDecoder {
   /**
    * Notice it gives you one instance of Cwl.  This has transformed all embedded files into scala object state
    */
-  def decodeAllCwl(fileName: BFile,
-                   workflowRoot: Option[String] = None): Parse[Cwl] =
+  def decodeCwlFile(fileName: BFile,
+                    workflowRoot: Option[String] = None): Parse[Cwl] =
     for {
       standaloneWorkflow <- cwlPreProcessor.preProcessCwlFile(fileName, workflowRoot)
       parsedCwl <- parseJson(standaloneWorkflow)
     } yield parsedCwl
 
-  def decodeTopLevelCwl(fileName: BFile, rootName: Option[String]): Parse[Cwl] = decodeAllCwl(fileName, rootName)
-
-  def decodeTopLevelCwl(cwl: String, zipOption: Option[BFile] = None, rootName: Option[String] = None): Parse[Cwl] = {
+  def decodeCwlString(cwl: String, zipOption: Option[BFile] = None, rootName: Option[String] = None): Parse[Cwl] = {
     for {
       parentDir <- goParse(BFile.newTemporaryDirectory("cwl.temp."))
       file <- fromEither[IO](BFile.newTemporaryFile("temp.", ".cwl", Option(parentDir)).write(cwl).asRight)
@@ -68,7 +66,7 @@ object CwlDecoder {
         case Some(zip) => goParse(zip.unzipTo(parentDir))
         case None => Monad[Parse].unit
       }
-      out <- decodeTopLevelCwl(file, rootName)
+      out <- decodeCwlFile(file, rootName)
       _ <- todoDeleteCwlFileParentDirectory(file)
     } yield out
   }
@@ -78,7 +76,7 @@ object CwlDecoder {
     //The SALAD preprocess step puts "file://" as a prefix to all filenames.  Better files doesn't like this.
     val bFileName = fileName.stripPrefix("file://")
 
-    decodeAllCwl(BFile(bFileName)).
+    decodeCwlFile(BFile(bFileName)).
       map(fileName.toString -> _).
       value.
       map(_.toValidated)
