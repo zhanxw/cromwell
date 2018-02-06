@@ -92,7 +92,7 @@ object WdlCall {
         case (inputName, wdlExpression) =>
           val identifier = wdlCall.womIdentifier.combine(inputName)
           val constructor = wdlCall match {
-            case _: WdlTaskCall => TaskCallInputExpressionNode.apply _
+            case _: WdlTaskCall => TaskCallInputExpressionNode.default _
             case _ => PlainAnonymousExpressionNode.apply _
           }
 

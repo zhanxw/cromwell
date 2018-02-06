@@ -39,12 +39,20 @@ abstract class ExpressionNode(override val identifier: WomIdentifier,
     evaluated <- womExpression.evaluateValue(inputs, ioFunctionSet)
     coerced <- womType.coerceRawValue(evaluated).toErrorOr
   } yield coerced).leftMap(_.map(e => s"Evaluating ${womExpression.sourceString} failed: $e")).toEither
+  
+  protected final def resolvePorts(outputPortLookup: OutputPort => ErrorOr[WomValue], ports: Map[String, OutputPort]) = {
+    import common.validation.ErrorOr._
+    ports.traverseValues(outputPortLookup).toEither
+  }
+  
+  protected def resolvedInputMappings(outputPortLookup: OutputPort => ErrorOr[WomValue]) = {
+    resolvePorts(outputPortLookup, inputMapping.map({ case (k, v) => k -> v.upstream }))
+  }
 
   override final def evaluate(outputPortLookup: OutputPort => ErrorOr[WomValue], ioFunctionSet: IoFunctionSet): Checked[Map[OutputPort, WomValue]] = {
     import cats.syntax.either._
-    import common.validation.ErrorOr._
     for {
-      inputs <- inputMapping.traverseValues(inputPort => outputPortLookup(inputPort.upstream)).toEither
+      inputs <- resolvedInputMappings(outputPortLookup)
       evaluated <- evaluateAndCoerce(inputs, ioFunctionSet)
     } yield Map(singleExpressionOutputPort -> evaluated)
   }

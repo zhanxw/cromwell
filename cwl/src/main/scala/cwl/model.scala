@@ -12,10 +12,11 @@ import cwl.WorkflowStepInput.InputSource
 import common.validation.ErrorOr.ErrorOr
 import cwl.CommandLineTool.{CommandBindingSortingKey, SortKeyAndCommandPart}
 import cwl.command.ParentName
+import wom.expression.WomExpression
 import wom.types.{WomStringType, WomType}
 import wom.graph.WomIdentifier
-import wom.graph.GraphNodePort.OutputPort
-import wom.graph.expression.ExposedExpressionNode
+import wom.graph.GraphNodePort.{InputPort, OutputPort}
+import wom.graph.expression.{AnonymousExpressionNode, ExposedExpressionNode, TaskCallInputExpressionNode}
 import wom.values.WomValue
 
 case class WorkflowStepInput(
@@ -24,11 +25,15 @@ case class WorkflowStepInput(
   linkMerge: Option[LinkMergeMethod] = None,
   default: Option[CwlAny] = None,
   valueFrom: Option[StringOrExpression] = None) {
+  
+  private def nodeConstructor(actualType: WomType) = (identifier: WomIdentifier, expression: WomExpression, _: WomType, inputMappings: Map[String, InputPort]) => {
+    new TaskCallInputExpressionNode(identifier, expression, actualType, inputMappings, Set.empty)
+  }
 
   def toExpressionNode(sourceMappings: Map[String, OutputPort],
                        outputTypeMap: Map[String, WomType],
                        expressionLib: ExpressionLib
-                      )(implicit parentName: ParentName): ErrorOr[ExposedExpressionNode] = {
+                      )(implicit parentName: ParentName): ErrorOr[AnonymousExpressionNode] = {
 
     val sources = source.toList.flatMap(_.fold(WorkflowStepInputSourceToStrings))
 
@@ -47,7 +52,7 @@ case class WorkflowStepInput(
       inputType = if (inputTypes.isEmpty) WomStringType else WomType.homogeneousTypeFromTypes(inputTypes)
       womExpression = WorkflowStepInputExpression(this, inputType, inputs, expressionLib)
       identifier = WomIdentifier(id)
-      ret <- ExposedExpressionNode.fromInputMapping(identifier, womExpression, inputType, sourceMappings).toEither
+      ret <- AnonymousExpressionNode.fromInputMapping(identifier, womExpression, sourceMappings, nodeConstructor(inputType)).toEither
     } yield ret).toValidated
   }
 }
