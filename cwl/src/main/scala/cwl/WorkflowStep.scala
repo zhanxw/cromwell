@@ -15,7 +15,7 @@ import cwl.ScatterLogic.ScatterVariablesPoly
 import cwl.ScatterMethod._
 import cwl.WorkflowStep.{WorkflowStepInputFold, _}
 import cwl.command.ParentName
-import shapeless._
+import shapeless.{:+:, CNil, _}
 import wom.callable.Callable
 import wom.callable.Callable._
 import wom.graph.CallNode._
@@ -34,7 +34,7 @@ import wom.values.WomValue
 case class WorkflowStep(
                          id: String,
                          in: Array[WorkflowStepInput] = Array.empty,
-                         out: Outputs,
+                         out: WorkflowStepOutputType,
                          run: Run,
                          requirements: Option[Array[Requirement]] = None,
                          hints: Option[Array[Hint]] = None,
@@ -58,10 +58,9 @@ case class WorkflowStep(
   lazy val allRequirements: List[Requirement] = requirements.toList.flatten ++ parentWorkflow.allRequirements
   
   lazy val womFqn: wom.graph.FullyQualifiedName = {
-    val localFqn = FullyQualifiedName.maybeApply(id)(ParentName.empty).map(_.id).getOrElse(id)
-    parentWorkflow.parentWorkflowStep
-      .map(_.womFqn.combine(localFqn))
-      .getOrElse(wom.graph.FullyQualifiedName(localFqn))
+    implicit val parentName = parentWorkflow.explicitWorkflowName
+    val localFqn = FullyQualifiedName.maybeApply(id).map(_.id).getOrElse(id)
+    parentWorkflow.womFqn.map(_.combine(localFqn)).getOrElse(wom.graph.FullyQualifiedName(localFqn))
   }
   
   lazy val allHints: List[Requirement] = {
@@ -86,8 +85,9 @@ case class WorkflowStep(
       })
     // Use them to find get the final type of the workflow outputs, and only the workflow outputs
     out.map({ stepOutput =>
-      val stepOutputId = FullyQualifiedName(stepOutput.id)
-      stepOutput.id -> scatterTypeFunction(runOutputTypes(stepOutputId.id))
+      val stepOutputValue = stepOutput.select[WorkflowStepOutput].map(_.id).getOrElse(stepOutput.select[String].get)
+      val stepOutputId = FullyQualifiedName(stepOutputValue)
+      stepOutputValue -> scatterTypeFunction(runOutputTypes(stepOutputId.id))
     }).toMap
   }
 
@@ -107,10 +107,6 @@ case class WorkflowStep(
 
     implicit val parentName = workflow.explicitWorkflowName
 
-    val womFqn: wom.graph.FullyQualifiedName = {
-      parentWorkflow.womFqn.combine(FullyQualifiedName.maybeApply(id).map(_.id).getOrElse(id))
-    }
-    
     val unqualifiedStepId: WomIdentifier = {
       FullyQualifiedName.maybeApply(id).map({ fqn =>
         WomIdentifier(LocalName(fqn.id), womFqn)
@@ -329,7 +325,7 @@ object WorkflowStep {
     */
   type ScatterMappings = Map[ExpressionNode, ScatterVariableNode]
 
-  val emptyOutputs: Outputs = Array.empty[WorkflowStepOutput]
+  val emptyOutputs: WorkflowStepOutputType = Array.empty
 
   type Run =
     String :+:
@@ -345,5 +341,6 @@ object WorkflowStep {
     object ExpressionTool { def unapply(run: Run): Option[ExpressionTool] = run.select[ExpressionTool] }
   }
 
-  type Outputs = Array[WorkflowStepOutput]
+  type WorkflowStepOutputInnerType = String :+: WorkflowStepOutput :+: CNil
+  type WorkflowStepOutputType = Array[WorkflowStepOutputInnerType]
 }

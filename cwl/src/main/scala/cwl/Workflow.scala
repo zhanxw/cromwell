@@ -46,10 +46,14 @@ case class Workflow private(
   private[cwl] var parentWorkflowStep: Option[WorkflowStep] = None
 
   val allRequirements: List[Requirement] = requirements.toList.flatten ++ parentWorkflowStep.toList.flatMap { _.allRequirements }
+
+  private [cwl] implicit val explicitWorkflowName = ParentName(id)
   
-  lazy val womFqn: wom.graph.FullyQualifiedName = {
-    val parsedId = id.split("/").last
-    parentWorkflowStep.map(_.womFqn.combine(parsedId)).getOrElse(wom.graph.FullyQualifiedName(parsedId))
+  lazy val womFqn: Option[wom.graph.FullyQualifiedName] = {
+    explicitWorkflowName.value map { workflowName =>
+      parentWorkflowStep.map(_.womFqn.combine(workflowName))
+        .getOrElse(wom.graph.FullyQualifiedName(workflowName))
+    }
   }
 
   val allHints: List[Requirement] = {
@@ -57,8 +61,6 @@ case class Workflow private(
     val requirementHints = hints.toList.flatten.flatMap { _.select[Requirement] }
     requirementHints ++ parentWorkflowStep.toList.flatMap { _.allHints }
   }
-
-  private [cwl] implicit val explicitWorkflowName = ParentName(id)
 
   val fileNames: List[String] = steps.toList.flatMap(_.run.select[String].toList)
 
@@ -70,14 +72,6 @@ case class Workflow private(
   }
 
   def womGraph(workflowName: String, validator: RequirementsValidator, expressionLib: ExpressionLib): Checked[Graph] = {
-    if (id.contains("transform")) {
-      println(id)
-    }
-
-    if (id.contains("etl")) {
-      println(id)
-    }
-    
     val workflowNameIdentifier = explicitWorkflowName.value.map(WomIdentifier.apply).getOrElse(WomIdentifier(workflowName))
 
     def womTypeForInputParameter(input: InputParameter): Option[WomType] = {
@@ -201,7 +195,7 @@ object Workflow {
                                       outputBinding: Option[CommandOutputBinding] = None,
                                       outputSource: Option[WorkflowOutputParameter#OutputSource] = None,
                                       linkMerge: Option[LinkMergeMethod] = None,
-                                      `type`: Option[MyriadOutputType] = None) {
+                                      `type`: Option[MyriadOutputType] = None) extends OutputParameter {
 
     type OutputSource = String :+: Array[String] :+: CNil
   }

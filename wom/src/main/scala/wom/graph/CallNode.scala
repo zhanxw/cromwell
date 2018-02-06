@@ -24,7 +24,6 @@ sealed abstract class CallNode extends GraphNode {
   def callType: String
 
   def inputDefinitionMappings: InputDefinitionMappings
-  def withIdentifier(womIdentifier: WomIdentifier): CallNode
 }
 
 final case class ExpressionCallNode private(override val identifier: WomIdentifier,
@@ -49,8 +48,6 @@ final case class ExpressionCallNode private(override val identifier: WomIdentifi
       evaluated <- callable.evaluate(lookup, ioFunctionSet, expressionBasedOutputPorts)
     } yield evaluated
   }
-
-  override def withIdentifier(womIdentifier: WomIdentifier) = copy(identifier = womIdentifier)
 }
 
 final case class CommandCallNode private(override val identifier: WomIdentifier,
@@ -71,8 +68,6 @@ final case class CommandCallNode private(override val identifier: WomIdentifier,
   def customOutputEvaluation(inputs: Map[String, WomValue], ioFunctionSet: IoFunctionSet, executionContext: ExecutionContext): OutputFunctionResponse = {
     callable.customizedOutputEvaluation(outputPorts, inputs, ioFunctionSet, executionContext)
   }
-
-  override def withIdentifier(womIdentifier: WomIdentifier) = copy(identifier = womIdentifier)
 }
 
 final case class WorkflowCallNode private(override val identifier: WomIdentifier,
@@ -84,7 +79,6 @@ final case class WorkflowCallNode private(override val identifier: WomIdentifier
     callable.innerGraph.nodes.collect { case gon: GraphOutputNode => SubworkflowCallOutputPort(gon, this) }
   }
   override val outputPorts: Set[OutputPort] = subworkflowCallOutputPorts.toSet[OutputPort]
-  override def withIdentifier(womIdentifier: WomIdentifier) = copy(identifier = womIdentifier)
 }
 
 object TaskCall {

@@ -1,22 +1,21 @@
 package cwl
 
+import cats.instances.list._
+import cats.syntax.either._
 import cats.syntax.option._
 import cats.syntax.traverse._
-import cats.instances.list._
-import eu.timepit.refined._
-import cats.syntax.either._
-import shapeless.{:+:, CNil, Witness}
-import shapeless.syntax.singleton._
-import cwl.LinkMergeMethod.LinkMergeMethod
-import cwl.WorkflowStepInput.InputSource
 import common.validation.ErrorOr.ErrorOr
 import cwl.CommandLineTool.{CommandBindingSortingKey, SortKeyAndCommandPart}
+import cwl.LinkMergeMethod.LinkMergeMethod
+import cwl.WorkflowStepInput.InputSource
 import cwl.command.ParentName
-import wom.expression.WomExpression
-import wom.types.{WomStringType, WomType}
+import eu.timepit.refined._
+import shapeless.syntax.singleton._
+import shapeless.{:+:, CNil, Witness}
+import wom.graph.GraphNodePort.OutputPort
 import wom.graph.WomIdentifier
-import wom.graph.GraphNodePort.{InputPort, OutputPort}
-import wom.graph.expression.{AnonymousExpressionNode, ExposedExpressionNode, TaskCallInputExpressionNode}
+import wom.graph.expression.{ExposedExpressionNode, ExpressionNode}
+import wom.types.{WomStringType, WomType}
 import wom.values.WomValue
 
 case class WorkflowStepInput(
@@ -26,14 +25,10 @@ case class WorkflowStepInput(
   default: Option[CwlAny] = None,
   valueFrom: Option[StringOrExpression] = None) {
   
-  private def nodeConstructor(actualType: WomType) = (identifier: WomIdentifier, expression: WomExpression, _: WomType, inputMappings: Map[String, InputPort]) => {
-    new TaskCallInputExpressionNode(identifier, expression, actualType, inputMappings, Set.empty)
-  }
-
   def toExpressionNode(sourceMappings: Map[String, OutputPort],
                        outputTypeMap: Map[String, WomType],
                        expressionLib: ExpressionLib
-                      )(implicit parentName: ParentName): ErrorOr[AnonymousExpressionNode] = {
+                      )(implicit parentName: ParentName): ErrorOr[ExpressionNode] = {
 
     val sources = source.toList.flatMap(_.fold(WorkflowStepInputSourceToStrings))
 
@@ -52,7 +47,7 @@ case class WorkflowStepInput(
       inputType = if (inputTypes.isEmpty) WomStringType else WomType.homogeneousTypeFromTypes(inputTypes)
       womExpression = WorkflowStepInputExpression(this, inputType, inputs, expressionLib)
       identifier = WomIdentifier(id)
-      ret <- AnonymousExpressionNode.fromInputMapping(identifier, womExpression, sourceMappings, nodeConstructor(inputType)).toEither
+      ret <- ExposedExpressionNode.fromInputMapping(identifier, womExpression, inputType, sourceMappings).toEither
     } yield ret).toValidated
   }
 }

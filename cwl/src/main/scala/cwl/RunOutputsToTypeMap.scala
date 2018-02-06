@@ -1,13 +1,12 @@
 package cwl
 
-import cwl.Workflow.WorkflowOutputParameter
 import shapeless.Poly1
 import wom.types.WomType
 
 object RunOutputsToTypeMap extends Poly1 {
 
-  def handleCommandLine(clt: CommandLineTool): Map[String, WomType] = {
-    clt.outputs.toList.foldLeft(Map.empty[String, WomType]) {
+  def handleOutputParameters[A <: OutputParameter](outputs: Array[A]): Map[String, WomType] = {
+    outputs.toList.foldLeft(Map.empty[String, WomType]) {
       (acc, out) =>
         acc ++
           out.
@@ -18,24 +17,11 @@ object RunOutputsToTypeMap extends Poly1 {
             toMap
     }
   }
-
-  def handleExpressionTool(et: ExpressionTool): Map[String, WomType] = {
-    et.outputs.toList.foldLeft(Map.empty[String, WomType]) {
-      (acc, out) =>
-        acc ++
-          out.
-            `type`.
-            map(_.fold(MyriadOutputTypeToWomType)).
-            map(out.id -> _).
-            toList.
-            toMap
-    }
-  }
-
+  
   implicit def commandLineTool =
     at[CommandLineTool] {
       clt =>
-          handleCommandLine(clt)
+        handleOutputParameters(clt.outputs)
     }
 
   implicit def string = at[String] {
@@ -45,19 +31,12 @@ object RunOutputsToTypeMap extends Poly1 {
 
   implicit def expressionTool = at[ExpressionTool] {
     et =>
-      handleExpressionTool(et)
+      handleOutputParameters(et.outputs)
   }
 
   implicit def workflow = at[Workflow] {
     wf =>
-//      val stepsOutputs = wf.steps.toList.flatMap(_.typedOutputs.toList).toMap
-
-      wf.outputs.flatMap({ workflowOutputParameter: WorkflowOutputParameter =>
-        workflowOutputParameter
-          .`type`
-          .map(_.fold(MyriadOutputTypeToWomType))
-          .map(workflowOutputParameter.id -> _)
-      }).toMap
+      handleOutputParameters(wf.outputs)
   }
 }
 
