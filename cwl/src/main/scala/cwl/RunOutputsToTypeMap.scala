@@ -1,5 +1,6 @@
 package cwl
 
+import cwl.Workflow.WorkflowOutputParameter
 import shapeless.Poly1
 import wom.types.WomType
 
@@ -18,6 +19,19 @@ object RunOutputsToTypeMap extends Poly1 {
     }
   }
 
+  def handleExpressionTool(et: ExpressionTool): Map[String, WomType] = {
+    et.outputs.toList.foldLeft(Map.empty[String, WomType]) {
+      (acc, out) =>
+        acc ++
+          out.
+            `type`.
+            map(_.fold(MyriadOutputTypeToWomType)).
+            map(out.id -> _).
+            toList.
+            toMap
+    }
+  }
+
   implicit def commandLineTool =
     at[CommandLineTool] {
       clt =>
@@ -25,17 +39,25 @@ object RunOutputsToTypeMap extends Poly1 {
     }
 
   implicit def string = at[String] {
-    fileName =>
+    _ =>
       Map.empty[String, WomType]
   }
 
   implicit def expressionTool = at[ExpressionTool] {
-    _ =>
-        Map.empty[String, WomType]
+    et =>
+      handleExpressionTool(et)
   }
 
   implicit def workflow = at[Workflow] {
-    wf =>  wf.steps.toList.flatMap(_.typedOutputs.toList).toMap
+    wf =>
+//      val stepsOutputs = wf.steps.toList.flatMap(_.typedOutputs.toList).toMap
+
+      wf.outputs.flatMap({ workflowOutputParameter: WorkflowOutputParameter =>
+        workflowOutputParameter
+          .`type`
+          .map(_.fold(MyriadOutputTypeToWomType))
+          .map(workflowOutputParameter.id -> _)
+      }).toMap
   }
 }
 

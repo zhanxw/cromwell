@@ -18,6 +18,7 @@ import shapeless.syntax.singleton._
 import wom.callable.WorkflowDefinition
 import wom.executable.Executable
 import wom.expression.{ValueAsAnExpression, WomExpression}
+import wom.graph
 import wom.graph.GraphNodePort.{GraphNodeOutputPort, OutputPort}
 import wom.graph._
 import wom.types.WomType
@@ -45,6 +46,11 @@ case class Workflow private(
   private[cwl] var parentWorkflowStep: Option[WorkflowStep] = None
 
   val allRequirements: List[Requirement] = requirements.toList.flatten ++ parentWorkflowStep.toList.flatMap { _.allRequirements }
+  
+  lazy val womFqn: wom.graph.FullyQualifiedName = {
+    val parsedId = id.split("/").last
+    parentWorkflowStep.map(_.womFqn.combine(parsedId)).getOrElse(wom.graph.FullyQualifiedName(parsedId))
+  }
 
   val allHints: List[Requirement] = {
     // Just ignore any hint that isn't a Requirement.
@@ -64,6 +70,14 @@ case class Workflow private(
   }
 
   def womGraph(workflowName: String, validator: RequirementsValidator, expressionLib: ExpressionLib): Checked[Graph] = {
+    if (id.contains("transform")) {
+      println(id)
+    }
+
+    if (id.contains("etl")) {
+      println(id)
+    }
+    
     val workflowNameIdentifier = explicitWorkflowName.value.map(WomIdentifier.apply).getOrElse(WomIdentifier(workflowName))
 
     def womTypeForInputParameter(input: InputParameter): Option[WomType] = {

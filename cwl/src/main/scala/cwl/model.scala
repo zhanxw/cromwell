@@ -12,7 +12,7 @@ import cwl.WorkflowStepInput.InputSource
 import common.validation.ErrorOr.ErrorOr
 import cwl.CommandLineTool.{CommandBindingSortingKey, SortKeyAndCommandPart}
 import cwl.command.ParentName
-import wom.types.WomType
+import wom.types.{WomStringType, WomType}
 import wom.graph.WomIdentifier
 import wom.graph.GraphNodePort.OutputPort
 import wom.graph.expression.ExposedExpressionNode
@@ -30,24 +30,21 @@ case class WorkflowStepInput(
                        expressionLib: ExpressionLib
                       )(implicit parentName: ParentName): ErrorOr[ExposedExpressionNode] = {
 
-    val sources = source.toList.flatMap(_.fold(WorkflowStepInputSourceToStrings)).map(FullyQualifiedName(_).id)
+    val sources = source.toList.flatMap(_.fold(WorkflowStepInputSourceToStrings))
 
     val inputs = sourceMappings.keySet
 
-    val outputTypeMapWithIDs = outputTypeMap.map {
-      case (key, value) => FullyQualifiedName(key).id -> value
-    }
-
     def lookupId(id: String): ErrorOr[WomType] =
-      outputTypeMapWithIDs.
+      outputTypeMap.
         get(id).
-        toValidNel(s"couldn't find $id as derived from $source in map\n${outputTypeMapWithIDs.mkString("\n")}")
+        toValidNel(s"couldn't find $id as derived from $source in map\n${outputTypeMap.mkString("\n")}")
 
     (for {
       //lookup each of our source Ids, failing if any of them are missing
       inputTypes <- sources.traverse[ErrorOr, WomType](lookupId).toEither
-      //we may have several sources, we make sure to have a type common to all of them
-      inputType = WomType.homogeneousTypeFromTypes(inputTypes)
+      // we may have several sources, we make sure to have a type common to all of them.
+      // In the case where there's no input source, we currently wrap the valueFrom value in a WomString (see WorkflowStepInputExpression)
+      inputType = if (inputTypes.isEmpty) WomStringType else WomType.homogeneousTypeFromTypes(inputTypes)
       womExpression = WorkflowStepInputExpression(this, inputType, inputs, expressionLib)
       identifier = WomIdentifier(id)
       ret <- ExposedExpressionNode.fromInputMapping(identifier, womExpression, inputType, sourceMappings).toEither

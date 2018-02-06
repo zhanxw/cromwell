@@ -66,7 +66,7 @@ baseCommand: echo
                 WorkflowStepInput(id = "tarfile", source = Option(Coproduct[InputSource]("inp"))),
                 WorkflowStepInput(id = "extractfile", source =  Option(Coproduct[InputSource]("ex")))
               ),
-            out = Coproduct[WorkflowStep.Outputs](Array("example_out"))
+            out = Array(WorkflowStepOutput("example_out"))
           ),
           WorkflowStep(
             id = "compile",
@@ -74,7 +74,7 @@ baseCommand: echo
             in = Array(
                  WorkflowStepInput(id = "src", source = Option(Coproduct[InputSource]("untar/example_out")))
               ),
-            out = Coproduct[WorkflowStep.Outputs](Array("classfile"))
+            out = Array(WorkflowStepOutput("classfile"))
           )
         )
       )
