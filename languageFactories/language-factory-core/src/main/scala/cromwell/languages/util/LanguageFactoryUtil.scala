@@ -28,8 +28,8 @@ object LanguageFactoryUtil {
 
     def unZipFile(f: Path) = Try {
       val unzippedFile = f.unzipTo(parentPath)
-      val unzippedFileContents = unzippedFile.list.toSeq.head
-      if (unzippedFileContents.isDirectory) unzippedFileContents else unzippedFile
+      val hasRootDirectory = unzippedFile.children.size == 1 && unzippedFile.children.toList.head.isDirectory
+      if (hasRootDirectory) unzippedFile.children.toList.head else unzippedFile
     }
 
     val importsFile = for {
