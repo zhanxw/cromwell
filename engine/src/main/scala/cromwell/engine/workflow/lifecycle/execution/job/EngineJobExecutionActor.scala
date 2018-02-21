@@ -1,7 +1,7 @@
 package cromwell.engine.workflow.lifecycle.execution.job
 
 import java.util.concurrent.TimeoutException
-
+import _root_.io.github.andrebeat.pool.Lease
 import akka.actor.SupervisorStrategy.{Escalate, Stop}
 import akka.actor.{ActorInitializationException, ActorRef, LoggingFSM, OneForOneStrategy, Props}
 import cromwell.backend.BackendCacheHitCopyingActor.CopyOutputsCommand
@@ -31,7 +31,7 @@ import cromwell.engine.workflow.lifecycle.execution.job.EngineJobExecutionActor.
 import cromwell.engine.workflow.lifecycle.execution.job.preparation.CallPreparation.{BackendJobPreparationSucceeded, CallPreparationFailed}
 import cromwell.engine.workflow.lifecycle.execution.job.preparation.{CallPreparation, JobPreparationActor}
 import cromwell.engine.workflow.lifecycle.execution.stores.ValueStore
-import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor.{JobExecutionTokenDenied, JobExecutionTokenDispensed, JobExecutionTokenRequest, JobExecutionTokenReturn}
+import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor.{JobExecutionTokenDispensed, JobExecutionTokenRequest, JobExecutionTokenReturn}
 import cromwell.jobstore.JobStoreActor._
 import cromwell.jobstore._
 import cromwell.services.EngineServicesStore
@@ -91,7 +91,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   // For tests:
   private[execution] def checkEffectiveCallCachingMode = effectiveCallCachingMode
 
-  private[execution] var executionToken: Option[JobExecutionToken] = None
+  private[execution] var executionToken: Option[Lease[JobExecutionToken]] = None
 
   private val effectiveCallCachingKey = CallCachingKeys.EffectiveModeKey
   private val callCachingReadResultMetadataKey = CallCachingKeys.ReadResultMetadataKey
@@ -127,9 +127,6 @@ class EngineJobExecutionActor(replyTo: ActorRef,
       } else {
         requestValueStore()
       }
-    case Event(JobExecutionTokenDenied(positionInQueue), NoData) =>
-      log.debug("Token denied so cannot start yet. Currently position {} in the queue", positionInQueue)
-      stay()
   }
 
   // When CheckingJobStore, the FSM always has NoData

@@ -272,7 +272,8 @@ object Dependencies {
   val commonDependencies = List(
     "org.slf4j" % "slf4j-api" % slf4jV,
     "org.typelevel" %% "cats-effect" % catsEffectV,
-    "org.apache.commons" % "commons-lang3" % commonsLang3V
+    "org.apache.commons" % "commons-lang3" % commonsLang3V,
+    "eu.timepit" %% "refined" % refinedV
   ) ++ catsDependencies ++ configDependencies
 
   val womDependencies = List(
@@ -306,6 +307,13 @@ object Dependencies {
     "io.circe" %% "circe-optics" % circeV
   ) ++ slf4jBindingDependencies ++ circeDependencies
 
+  val scalaMeterDependency = List(
+    "com.storm-enroute" %% "scalameter" % scalameterV % Test
+      exclude("com.fasterxml.jackson.core", "jackson-databind")
+      exclude("com.fasterxml.jackson.module", "jackson-module-scala")
+      exclude("org.scala-tools.testing", "test-interface")
+  )
+
   val coreDependencies = List(
     "com.typesafe.akka" %% "akka-actor" % akkaV,
     "com.typesafe.akka" %% "akka-testkit" % akkaV % Test,
@@ -317,7 +325,7 @@ object Dependencies {
   ) ++ configDependencies ++ catsDependencies ++ googleApiClientDependencies ++ statsDDependencies ++
     betterFilesDependencies ++
     // TODO: We're not using the "F" in slf4j. Core only supports logback, specifically the WorkflowLogger.
-    slf4jBindingDependencies
+    slf4jBindingDependencies ++ scalaMeterDependency
 
   val databaseMigrationDependencies = liquibaseDependencies ++ dbmsDependencies
 
@@ -336,14 +344,11 @@ object Dependencies {
   val engineDependencies = List(
     "commons-codec" % "commons-codec" % commonsCodecV,
     "commons-io" % "commons-io" % commonsIoV,
-    "com.storm-enroute" %% "scalameter" % scalameterV
-      exclude("com.fasterxml.jackson.core", "jackson-databind")
-      exclude("com.fasterxml.jackson.module", "jackson-module-scala")
-      exclude("org.scala-tools.testing", "test-interface"),
     "com.fasterxml.jackson.core" % "jackson-databind" % jacksonV,
     "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonV,
     "io.swagger" % "swagger-parser" % swaggerParserV % Test,
-    "org.yaml" % "snakeyaml" % snakeyamlV % Test
+    "org.yaml" % "snakeyaml" % snakeyamlV % Test,
+    "io.github.andrebeat" %% "scala-pool" % "0.4.1"
   ) ++ swaggerUiDependencies ++ akkaHttpDependencies ++ circeDependencies
 
   val rootDependencies = slf4jBindingDependencies

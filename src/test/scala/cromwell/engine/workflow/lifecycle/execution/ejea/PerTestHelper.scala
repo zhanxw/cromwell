@@ -3,6 +3,7 @@ package cromwell.engine.workflow.lifecycle.execution.ejea
 import java.util.UUID
 
 import _root_.wdl.draft2.model._
+import _root_.io.github.andrebeat.pool._
 import akka.actor.{ActorRef, ActorSystem, Props}
 import akka.testkit.{TestFSMRef, TestProbe}
 import cromwell.backend.BackendJobExecutionActor.{ExecuteJobCommand, RecoverJobCommand}
@@ -37,7 +38,8 @@ private[ejea] class PerTestHelper(implicit val system: ActorSystem) extends Mock
   val jobIndex = Some(1)
   val jobAttempt = 1
 
-  val executionToken = JobExecutionToken(JobExecutionTokenType("test", None), UUID.randomUUID())
+  val pool = Pool(100, () => JobExecutionToken(JobExecutionTokenType("test", None), UUID.randomUUID()))
+  val executionToken = pool.acquire()
 
   val task = WomMocks.mockTaskDefinition(taskName).copy(
     inputs = List(InputDefinitionWithDefault("inInt", WomIntegerType, mockIntExpression(543))),

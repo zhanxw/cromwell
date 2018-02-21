@@ -8,6 +8,7 @@ import akka.pattern.GracefulStopSupport
 import akka.routing.RoundRobinPool
 import akka.stream.ActorMaterializer
 import com.typesafe.config.ConfigFactory
+import common.util.ConfigUtil._
 import cromwell.core.actor.StreamActorHelper.ActorRestartException
 import cromwell.core.io.Throttle
 import cromwell.core.{Dispatcher, DockerConfiguration, DockerLocalLookup, DockerRemoteLookup}
@@ -24,6 +25,7 @@ import cromwell.engine.workflow.WorkflowManagerActor
 import cromwell.engine.workflow.WorkflowManagerActor.AbortAllWorkflowsCommand
 import cromwell.engine.workflow.lifecycle.execution.callcaching.{CallCache, CallCacheReadActor, CallCacheWriteActor}
 import cromwell.engine.workflow.lifecycle.finalization.CopyWorkflowLogsActor
+import cromwell.engine.workflow.tokens.DynamicRateLimiter._
 import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor
 import cromwell.engine.workflow.workflowstore.{SqlWorkflowStore, WorkflowStore, WorkflowStoreActor}
 import cromwell.jobstore.{JobStore, JobStoreActor, SqlJobStore}
@@ -31,6 +33,8 @@ import cromwell.services.{EngineServicesStore, ServiceRegistryActor}
 import cromwell.subworkflowstore.{SqlSubWorkflowStore, SubWorkflowStoreActor}
 import cromwell.util.GracefulShutdownHelper
 import cromwell.util.GracefulShutdownHelper.ShutdownCommand
+import eu.timepit.refined.api.Refined
+import eu.timepit.refined.numeric.Positive
 import net.ceedubs.ficus.Ficus._
 
 import scala.concurrent.duration._
@@ -119,7 +123,20 @@ abstract class CromwellRootActor(gracefulShutdown: Boolean, abortJobsOnTerminate
   }
   lazy val backendSingletonCollection = BackendSingletonCollection(backendSingletons)
 
-  lazy val jobExecutionTokenDispenserActor = context.actorOf(JobExecutionTokenDispenserActor.props(serviceRegistryActor))
+  lazy val jobRateConfig = systemConfig.getConfig("job-rate-control")
+
+  lazy val startJobRate = Rate(
+    jobRateConfig.as[Int]("start-up-rate.jobs"),
+    jobRateConfig.as[FiniteDuration]("start-up-rate.per")
+  )
+  lazy val nominalJobRate = Rate(
+    jobRateConfig.as[Int]("nominal-rate.jobs"),
+    jobRateConfig.as[FiniteDuration]("nominal-rate.per")
+  )
+  
+  lazy val rampupPercentage = jobRateConfig.as[PositivePercentage]("rampup-percentage")
+
+  lazy val jobExecutionTokenDispenserActor = context.actorOf(JobExecutionTokenDispenserActor.props(serviceRegistryActor, startJobRate, nominalJobRate, rampupPercentage), "JobTokenDispenserActor")
 
   lazy val workflowManagerActor = context.actorOf(
     WorkflowManagerActor.props(

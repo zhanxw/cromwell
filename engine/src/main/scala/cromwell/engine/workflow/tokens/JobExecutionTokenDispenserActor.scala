@@ -1,86 +1,99 @@
 package cromwell.engine.workflow.tokens
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Props, Terminated}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Terminated, Timers}
+import common.util.ConfigUtil.{OneToOneHundred, PositivePercentage}
 import cromwell.core.Dispatcher.EngineDispatcher
 import cromwell.core.JobExecutionToken._
 import cromwell.core.{ExecutionStatus, JobExecutionToken}
 import cromwell.engine.instrumentation.JobInstrumentation
+import cromwell.engine.workflow.tokens.DynamicRateLimiter.{Rate, TokensAvailable}
 import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor._
-import cromwell.engine.workflow.tokens.TokenPool.TokenPoolPop
+import cromwell.engine.workflow.tokens.TokenQueue.LeasedActor
 import cromwell.services.instrumentation.CromwellInstrumentation._
 import cromwell.services.instrumentation.CromwellInstrumentationScheduler
+import cromwell.services.loadcontroller.impl.LoadControllerServiceActor.ListenToLoadController
+import io.github.andrebeat.pool.Lease
 
-import scala.collection.immutable.Queue
-
-class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRef) extends Actor with ActorLogging with JobInstrumentation with CromwellInstrumentationScheduler {
+class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRef,
+                                      override val startRate: Rate,
+                                      override val nominalRate: Rate,
+                                      override val rampUpPercentage: PositivePercentage) extends Actor
+  with ActorLogging
+  with JobInstrumentation
+  with CromwellInstrumentationScheduler
+  with DynamicRateLimiter
+  with Timers {
 
   /**
-    * Lazily created token pool. We only create a pool for a token type when we need it
+    * Lazily created token queue. We only create a queue for a token type when we need it
     */
-  var tokenPools: Map[JobExecutionTokenType, TokenPool] = Map.empty
-  var tokenAssignments: Map[ActorRef, JobExecutionToken] = Map.empty
-  
-  scheduleInstrumentation { sendGaugeJob(ExecutionStatus.Running.toString, tokenAssignments.size.toLong) }
+  var tokenQueues: Map[JobExecutionTokenType, TokenQueue] = Map.empty
+  var tokenAssignments: Map[ActorRef, Lease[JobExecutionToken]] = Map.empty
 
-  override def receive: Actor.Receive = {
-    case JobExecutionTokenRequest(tokenType) => sendTokenRequestResult(sender, tokenType)
-    case JobExecutionTokenReturn(token) => unassign(sender, token)
-    case Terminated(terminee) => onTerminate(terminee)
+  scheduleInstrumentation { 
+    sendGaugeJob(ExecutionStatus.Running.toString, tokenAssignments.size.toLong)
+    sendGaugeJob(ExecutionStatus.QueuedInCromwell.toString, tokenQueues.values.map(_.size).sum.toLong)
   }
 
-  private def sendTokenRequestResult(sndr: ActorRef, tokenType: JobExecutionTokenType): Unit = {
+  override def preStart() = {
+    ratePreStart()
+    serviceRegistryActor ! ListenToLoadController
+    super.preStart()
+  }
+
+  private def tokenReceive: Actor.Receive = {
+    case JobExecutionTokenRequest(tokenType) => enqueue(sender, tokenType)
+    case JobExecutionTokenReturn(token) => release(sender, token)
+    case TokensAvailable(n) => distribute(n)
+    case Terminated(terminee) => onTerminate(terminee)
+  }
+  
+  override def receive = rateReceive.orElse(tokenReceive)
+
+  private def enqueue(sndr: ActorRef, tokenType: JobExecutionTokenType): Unit = {
     if (tokenAssignments.contains(sndr)) {
       sndr ! JobExecutionTokenDispensed(tokenAssignments(sndr))
     } else {
       context.watch(sndr)
-      val updatedTokenPool = getTokenPool(tokenType).pop() match {
-        case TokenPoolPop(newTokenPool, Some(token)) =>
-          assignAndSendToken(sndr, token)
-          newTokenPool
-        case TokenPoolPop(sizedTokenPoolAndQueue: SizedTokenPoolAndActorQueue, None) =>
-          val (poolWithActorEnqueued, positionInQueue) = sizedTokenPoolAndQueue.enqueue(sndr)
-          sndr ! JobExecutionTokenDenied(positionInQueue)
-          poolWithActorEnqueued
-        case TokenPoolPop(someOtherTokenPool, None) =>
-          //If this has happened, somebody's been playing around in this class and not covered this case:
-          throw new RuntimeException(s"Unexpected token pool type didn't return a token: ${someOtherTokenPool.getClass.getSimpleName}")
-      }
-
-      tokenPools += tokenType -> updatedTokenPool
+      val updatedTokenQueue = getTokenQueue(tokenType).enqueue(sndr)
+      tokenQueues += tokenType -> updatedTokenQueue
     }
   }
 
-  private def getTokenPool(tokenType: JobExecutionTokenType): TokenPool = tokenPools.getOrElse(tokenType, createNewPool(tokenType))
-
-  private def createNewPool(tokenType: JobExecutionTokenType): TokenPool = {
-    val newPool = TokenPool(tokenType) match {
-      case s: SizedTokenPool => SizedTokenPoolAndActorQueue(s, Queue.empty)
-      case anythingElse => anythingElse
-    }
-    tokenPools += tokenType -> newPool
-    newPool
+  private def getTokenQueue(tokenType: JobExecutionTokenType): TokenQueue = {
+    tokenQueues.getOrElse(tokenType, createNewQueue(tokenType))
   }
 
-  private def assignAndSendToken(actor: ActorRef, token: JobExecutionToken) = {
-    incrementJob("Started")
-    tokenAssignments += actor -> token
-    actor ! JobExecutionTokenDispensed(token)
+  private def createNewQueue(tokenType: JobExecutionTokenType): TokenQueue = {
+    val newQueue = TokenQueue(tokenType)
+    tokenQueues += tokenType -> newQueue
+    newQueue
   }
 
-  private def unassign(actor: ActorRef, token: JobExecutionToken): Unit = {
+  private def distribute(n: Int) = if (tokenQueues.nonEmpty) {
+    val iterator = RoundRobinIterator(tokenQueues.values.toList)
+
+    val nextTokens = iterator.take(n).toList
+    val newLeases = nextTokens.foldLeft(Map.empty[ActorRef, Lease[JobExecutionToken]])({
+      case (accLeases, LeasedActor(actor, lease)) =>
+        accLeases + (actor -> lease)
+    })
+    val newQueues = iterator.updatedQueues.map(queue => queue.tokenType -> queue).toMap
+
+    newLeases.foreach({
+      case (actor, lease) =>
+        incrementJob("Started")
+        actor ! JobExecutionTokenDispensed(lease)
+    })
+
+    tokenQueues = newQueues
+    tokenAssignments = tokenAssignments ++ newLeases
+  }
+
+  private def release(actor: ActorRef, token: Lease[JobExecutionToken]): Unit = {
     if (tokenAssignments.contains(actor) && tokenAssignments(actor) == token) {
       tokenAssignments -= actor
-
-      val pool = getTokenPool(token.jobExecutionTokenType) match {
-        case SizedTokenPoolAndActorQueue(innerPool, queue) if queue.nonEmpty =>
-          val (nextInLine, newQueue) = queue.dequeue
-          assignAndSendToken(nextInLine, token)
-          SizedTokenPoolAndActorQueue(innerPool, newQueue)
-        case other =>
-          other.push(token)
-      }
-
-      tokenPools += token.jobExecutionTokenType -> pool
+      token.release()
       context.unwatch(actor)
       ()
     } else {
@@ -95,9 +108,8 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
         self.tell(msg = JobExecutionTokenReturn(token), sender = terminee)
       case None =>
         log.debug("Actor {} stopped while we were still watching it... but it doesn't have a token. Removing it from any queues if necessary", terminee)
-        tokenPools = tokenPools map {
-          case (tokenType, SizedTokenPoolAndActorQueue(pool, queue)) => tokenType -> SizedTokenPoolAndActorQueue(pool, queue.filterNot(_ == terminee))
-          case (tokenType, other) => tokenType -> other
+        tokenQueues = tokenQueues map {
+          case (tokenType, tokenQueue @ TokenQueue(queue, _)) => tokenType -> tokenQueue.copy(queue = queue.filterNot(_ == terminee))
         }
     }
     context.unwatch(terminee)
@@ -106,36 +118,30 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
 }
 
 object JobExecutionTokenDispenserActor {
+  import DynamicRateLimiter._
+  import eu.timepit.refined.refineV
 
-  def props(serviceRegistryActor: ActorRef) = Props(new JobExecutionTokenDispenserActor(serviceRegistryActor)).withDispatcher(EngineDispatcher)
+  import scala.concurrent.duration._
+
+  val DefaultStartRate = 100 per 2.second
+  val DefaultNominalRate = 1000 per 1.second
+  val DefaultRampUpPercentage = refineV[OneToOneHundred](10) match {
+    case Left(_) => throw new Exception("Don't break the default !")
+    case Right(p) => p
+  }
+
+  def props(serviceRegistryActor: ActorRef,
+            startRate: Rate = DefaultStartRate,
+            nominalRate: Rate = DefaultNominalRate,
+            rampupPercentage: PositivePercentage = DefaultRampUpPercentage) = {
+    Props(new JobExecutionTokenDispenserActor(serviceRegistryActor, startRate, nominalRate, rampupPercentage))
+      .withDispatcher(EngineDispatcher)
+      .withMailbox("akka.priority-mailbox")
+  }
 
   case class JobExecutionTokenRequest(jobExecutionTokenType: JobExecutionTokenType)
-  case class JobExecutionTokenReturn(jobExecutionToken: JobExecutionToken)
+  case class JobExecutionTokenReturn(jobExecutionToken: Lease[JobExecutionToken])
 
   sealed trait JobExecutionTokenRequestResult
-  case class JobExecutionTokenDispensed(jobExecutionToken: JobExecutionToken) extends JobExecutionTokenRequestResult
-  case class JobExecutionTokenDenied(positionInQueue: Integer) extends JobExecutionTokenRequestResult
-
-  case class SizedTokenPoolAndActorQueue(sizedPool: SizedTokenPool, queue: Queue[ActorRef]) extends TokenPool {
-    override def currentLoans = sizedPool.currentLoans
-    override def push(jobExecutionToken: JobExecutionToken) = SizedTokenPoolAndActorQueue(sizedPool.push(jobExecutionToken), queue)
-    override def pop() = {
-      val underlyingPop = sizedPool.pop()
-      TokenPoolPop(SizedTokenPoolAndActorQueue(underlyingPop.newTokenPool.asInstanceOf[SizedTokenPool], queue), underlyingPop.poppedItem)
-    }
-
-    /**
-      * Enqueues an actor (or just finds its current position)
-      *
-      * @return The actor's position in the queue
-      */
-    def enqueue(actor: ActorRef): (SizedTokenPoolAndActorQueue, Int) = {
-      queue.indexOf(actor) match {
-        case -1 =>
-          val newQueue = queue :+ actor
-          (SizedTokenPoolAndActorQueue(sizedPool, newQueue), newQueue.size - 1) // Convert from 1-indexed to 0-indexed
-        case index => (this, index)
-      }
-    }
-  }
+  case class JobExecutionTokenDispensed(jobExecutionToken: Lease[JobExecutionToken]) extends JobExecutionTokenRequestResult
 }

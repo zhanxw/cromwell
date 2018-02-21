@@ -2,6 +2,7 @@ package cromwell.services
 
 import akka.actor.SupervisorStrategy.Escalate
 import akka.actor.{Actor, ActorInitializationException, ActorLogging, ActorRef, OneForOneStrategy, Props}
+import akka.routing.Listen
 import cats.data.NonEmptyList
 import com.typesafe.config.{Config, ConfigFactory, ConfigObject}
 import cromwell.core.Dispatcher.ServiceDispatcher
@@ -18,6 +19,8 @@ object ServiceRegistryActor {
   trait ServiceRegistryMessage {
     def serviceName: String
   }
+
+  trait ListenToMessage extends ServiceRegistryMessage
 
   def props(config: Config) = Props(new ServiceRegistryActor(config)).withDispatcher(ServiceDispatcher)
 
@@ -64,6 +67,12 @@ class ServiceRegistryActor(globalConfig: Config) extends Actor with ActorLogging
   }
 
   def receive = {
+    case msg: ListenToMessage => services.get(msg.serviceName) match {
+      case Some(ref) => ref.tell(Listen(sender), sender)
+      case None =>
+        log.error("Received ServiceRegistryMessage requesting service '{}' for which no service is configured.  Message: {}", msg.serviceName, msg)
+        sender ! ServiceRegistryFailure(msg.serviceName)
+    }
     case msg: ServiceRegistryMessage =>
       services.get(msg.serviceName) match {
         case Some(ref) => ref.tell(msg, sender)

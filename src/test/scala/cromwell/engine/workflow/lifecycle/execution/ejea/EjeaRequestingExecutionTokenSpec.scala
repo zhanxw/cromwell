@@ -1,9 +1,9 @@
 package cromwell.engine.workflow.lifecycle.execution.ejea
 
-import cromwell.engine.workflow.lifecycle.execution.job.EngineJobExecutionActor._
 import cromwell.engine.workflow.lifecycle.execution.JobStarting
 import cromwell.engine.workflow.lifecycle.execution.WorkflowExecutionActor.RequestValueStore
-import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor.{JobExecutionTokenDenied, JobExecutionTokenDispensed}
+import cromwell.engine.workflow.lifecycle.execution.job.EngineJobExecutionActor._
+import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor.JobExecutionTokenDispensed
 import cromwell.jobstore.JobStoreActor.QueryJobCompletion
 import org.scalatest.concurrent.Eventually
 
@@ -16,7 +16,6 @@ class EjeaRequestingExecutionTokenSpec extends EngineJobExecutionActorSpec with 
     List(true, false) foreach { restarting =>
       s"do nothing when denied a token (with restarting=$restarting)" in {
         ejea = helper.buildEJEA(restarting = restarting)
-        ejea ! JobExecutionTokenDenied(1) // 1 is arbitrary. Doesn't matter what position in the queue we are.
 
         helper.jobTokenDispenserProbe.expectNoMsg(max = awaitAlmostNothing)
         helper.jobPreparationProbe.msgAvailable should be(false)
