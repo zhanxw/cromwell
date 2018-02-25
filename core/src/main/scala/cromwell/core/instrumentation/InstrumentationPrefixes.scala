@@ -6,4 +6,5 @@ object InstrumentationPrefixes {
   val JobPrefix: Option[String] = Option("job")
   val IoPrefix: Option[String] = Option("io")
   val ApiPrefix: Option[String] = Option("rest-api")
+  val LoadPrefix: Option[String] = Option("load")
 }

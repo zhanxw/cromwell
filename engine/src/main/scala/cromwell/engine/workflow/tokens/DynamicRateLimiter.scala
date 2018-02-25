@@ -4,7 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
 import akka.dispatch.ControlMessage
 import common.util.ConfigUtil.PositivePercentage
 import cromwell.engine.workflow.tokens.DynamicRateLimiter._
-import cromwell.services.loadcontroller.impl.LoadControllerServiceActor.{CriticalLoad, HighLoad, MemoryAlertLifted, VeryHighLoad}
+import cromwell.services.loadcontroller.impl.LoadControllerServiceActor.{CriticalLoad, HighLoad, NormalLoad, VeryHighLoad}
 
 import scala.concurrent.duration._
 
@@ -14,11 +14,12 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
   protected def rampUpPercentage: PositivePercentage
   protected def serviceRegistryActor: ActorRef
 
-  private var currentRate: Rate.Normalized = startRate.normalized
-  private var nextStepCursor = 1
-  private var nextRate: Option[Rate.Normalized] = None
+  private var stepCursor = 0
+  private var needsUpdate: Boolean = false
   private val targetRate: Rate.Normalized = nominalRate.normalized
   private val steps = startRate.normalized.linearize(targetRate, rampUpPercentage)
+
+  private def currentRate: Rate.Normalized = steps(stepCursor)
 
   protected def ratePreStart(): Unit = {
     if (!targetRate.isZero) {
@@ -29,40 +30,59 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
   }
 
   protected def rateReceive: Receive = {
-    case ResetAction if currentRate.n != 0 => 
-      self ! TokensAvailable(currentRate.n)
-      // Update the timer with the next rate
-      nextRate.foreach { next =>
-        currentRate = next
-        nextRate = None
-        timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
-        log.info("{} - New rate: {}", self.path.name, currentRate)
-      }
-    case NextRateAction if nextStepCursor < steps.length =>
-      nextRate = Option(steps(nextStepCursor))
-      nextStepCursor += 1
-      timers.startSingleTimer(NextRateKey, NextRateAction, 1.minute)
-    case HighLoad =>
-      nextRate = None
-      timers.cancel(NextRateKey)
-      log.info("{} - Memory Alert Level 1. Stopping rampUp. Current rate: {}", self.path.name, currentRate)
-    case VeryHighLoad =>
-      nextRate = None
-      timers.cancel(NextRateKey)
-      nextStepCursor = nextStepCursor / 2
-      currentRate = steps(nextStepCursor)
+    case ResetAction if currentRate.n != 0 => releaseTokens()
+    case NextRateAction if stepCursor - 1 < steps.length => increaseRate()
+    case HighLoad => highLoad()
+    case VeryHighLoad => veryHighLoad()
+    case CriticalLoad => criticalLoad()
+    case NormalLoad => backToNormal()
+  }
+  
+  def releaseTokens() = {
+    self ! TokensAvailable(currentRate.n)
+    // Update the timer with the next rate
+    if (needsUpdate) {
       timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
-      log.info("{} - Memory Alert Level 2. Cutting rampUp rate in half. Current rate: {}", self.path.name, currentRate)
-    case CriticalLoad =>
-      timers.cancel(NextRateKey)
-      timers.cancel(ResetKey)
-      log.info("{} - Memory Alert Level 3. Freezing token dispensing.", self.path.name)
-    case MemoryAlertLifted =>
-      if (!timers.isTimerActive(ResetKey)) {
-        timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
-      }
-      timers.startSingleTimer(NextRateKey, NextRateAction, 1.minute)
-      log.info("{} - Memory Alert Lifted. Resuming. Current rate: {}", self.path.name, currentRate)
+      log.info("{} - New rate: {}", self.path.name, currentRate)
+    }
+  }
+  
+  def increaseRate() = {
+    stepCursor += 1
+    needsUpdate = true
+    timers.startSingleTimer(NextRateKey, NextRateAction, 1.minute)
+  }
+  
+  // When load is high, stop increasing the rate of token distribution
+  def highLoad(doLogging: Boolean = true) = {
+    needsUpdate = false
+    timers.cancel(NextRateKey)
+    if (doLogging) log.warning("{} - High load alert. Stop increasing token distribution rate. Current rate: {}", self.path.name, currentRate)
+  }
+  
+  // When load is very high, immediately cut in half the rate of token distribution (and stop increasing the rate too)
+  def veryHighLoad() = {
+    highLoad(doLogging = false)
+    stepCursor = stepCursor / 2
+    timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
+    log.warning("{} - Very high load alert. Stop increasing token distribution rate and cutting it in half. Current rate: {}", self.path.name, currentRate)
+  }
+  
+  // When load is critical, freeze everything (stop token distribution and stop increasing the rate)
+  def criticalLoad() = {
+    log.warning("{} - Critical load alert. Freeze token distribution.", self.path.name)
+    timers.cancel(NextRateKey)
+    timers.cancel(ResetKey)
+  }
+  
+  // When back to normal, restart the token distribution timer if needed and re-initialize the next rate one
+  def backToNormal() = {
+    needsUpdate = true
+    if (!timers.isTimerActive(ResetKey)) {
+      timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
+    }
+    timers.startSingleTimer(NextRateKey, NextRateAction, 1.minute)
+    log.info("{} - Load back to normal. Current rate: {}", self.path.name, currentRate)
   }
 }
 
