@@ -8,9 +8,20 @@ import cromwell.services.keyvalue.KeyValueServiceActor._
 
 import scala.concurrent.Future
 
-object SqlKeyValueServiceActor {
+object SqlKeyValueServiceActorRoutee {
   def props(serviceConfig: Config, globalConfig: Config, serviceRegistryActor: ActorRef) = Props(SqlKeyValueServiceActor(serviceConfig, globalConfig, serviceRegistryActor)).withDispatcher(ServiceDispatcher)
 }
+
+//final case class SqlKeyValueServiceActor(serviceConfig: Config, globalConfig: Config, serviceRegistryActor: ActorRef) extends Actor {
+//  val routees = Vector.fill(5) {
+//    ActorRefRoutee(context.actorOf(SqlKeyValueServiceActorRoutee.props(serviceConfig, globalConfig, serviceRegistryActor)))
+//  }
+//  val router = Router(RoundRobinRoutingLogic(), routees)
+//  
+//  override def receive = {
+//    case msg => router.route(msg, sender())
+//  }
+//}
 
 final case class SqlKeyValueServiceActor(serviceConfig: Config, globalConfig: Config, serviceRegistryActor: ActorRef)
   extends KeyValueServiceActor with BackendKeyValueDatabaseAccess {

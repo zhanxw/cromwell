@@ -1,11 +1,13 @@
 package cromwell.services.keyvalue
 
-import akka.actor.{Actor, ActorRef}
+import akka.actor.ActorRef
+import cromwell.core.actor.BatchActor.CommandAndReplyTo
+import cromwell.core.actor.ReadActor
 import cromwell.core.{JobKey, MonitoringCompanionHelper, WorkflowId}
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
 import cromwell.services.keyvalue.KeyValueServiceActor._
 
-import scala.concurrent.{ExecutionContextExecutor, Future}
+import scala.concurrent.Future
 import scala.util.{Failure, Success}
 
 object KeyValueServiceActor {
@@ -37,27 +39,29 @@ object KeyValueServiceActor {
   final case class KvPutSuccess(action: KvPut) extends KvResponse with KvMessageWithAction
 }
 
-trait KeyValueServiceActor extends Actor with MonitoringCompanionHelper {
-  implicit val ec: ExecutionContextExecutor
-
-  val kvReceive: Receive = {
-    case action: KvGet => respond(sender(), action, doGet(action))
-    case action: KvPut =>
+trait KeyValueServiceActor extends ReadActor[CommandAndReplyTo[KvAction]] with MonitoringCompanionHelper {
+  override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[KvAction]] = {
+    case c: KvAction => CommandAndReplyTo(c, snd)
+  }
+  override def processHead(action: CommandAndReplyTo[KvAction]) = action.command match {
+    case get: KvGet => respond(action.replyTo, get, doGet(get))
+    case put: KvPut =>
       addWork()
-      val putAction = doPut(action)
+      val putAction = doPut(put)
       putAction andThen { case _ => removeWork() }
-      respond(sender(), action, putAction)
+      respond(action.replyTo, put, putAction)
   }
 
-  override def receive = kvReceive.orElse(monitoringReceive)
+  override def receive = monitoringReceive.orElse(super.receive)
 
   def doPut(put: KvPut): Future[KvResponse]
   def doGet(get: KvGet): Future[KvResponse]
 
-  private def respond(replyTo: ActorRef, action: KvAction, response: Future[KvResponse]): Unit = {
+  private def respond(replyTo: ActorRef, action: KvAction, response: Future[KvResponse]): Future[KvResponse] = {
     response.onComplete {
       case Success(x) => replyTo ! x
       case Failure(ex) => replyTo ! KvFailure(action, ex)
     }
+    response
   }
 }

@@ -22,7 +22,7 @@ class KeyValueServiceActorSpec extends ServicesSpec("KeyValue") {
   )
 
   val emptyConfig = ConfigFactory.empty()
-  val sqlKvServiceActor = system.actorOf(SqlKeyValueServiceActor.props(emptyConfig, emptyConfig, TestProbe().ref))
+  val sqlKvServiceActor = system.actorOf(SqlKeyValueServiceActorRoutee.props(emptyConfig, emptyConfig, TestProbe().ref))
   val wfID = WorkflowId.randomId()
 
   val jobKey1 = KvJobKey("some_FQN", Option(-1), 1)

@@ -8,7 +8,7 @@ import cromwell.util.GracefulShutdownHelper.ShutdownCommand
 import org.slf4j.LoggerFactory
 
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{Duration, FiniteDuration}
 import scala.util.{Failure, Success}
 
 
@@ -51,7 +51,9 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
 
   override def preStart(): Unit = {
     log.info("{} configured to flush with batch size {} and processHead rate {}.", name, batchSize, flushRate)
-    timers.startPeriodicTimer(ScheduledFlushKey, ScheduledProcessAction, flushRate)
+    if (flushRate != Duration.Zero) {
+      timers.startPeriodicTimer(ScheduledFlushKey, ScheduledProcessAction, flushRate)
+    }
   }
 
   startWith(WaitingToProcess, WeightedQueue.empty[C, Int](weightFunction))
