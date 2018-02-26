@@ -17,8 +17,9 @@ object SqlKeyValueServiceActorRoutee {
 //    ActorRefRoutee(context.actorOf(SqlKeyValueServiceActorRoutee.props(serviceConfig, globalConfig, serviceRegistryActor)))
 //  }
 //  val router = Router(RoundRobinRoutingLogic(), routees)
-//  
+//
 //  override def receive = {
+//    case ShutdownCommand => routees.foreach(_.send(ShutdownCommand, sender()))
 //    case msg => router.route(msg, sender())
 //  }
 //}

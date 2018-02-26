@@ -129,14 +129,14 @@ abstract class CromwellRootActor(gracefulShutdown: Boolean, abortJobsOnTerminate
     jobRateConfig.as[Int]("start-up-rate.jobs"),
     jobRateConfig.as[FiniteDuration]("start-up-rate.per")
   )
-  lazy val nominalJobRate = Rate(
-    jobRateConfig.as[Int]("nominal-rate.jobs"),
-    jobRateConfig.as[FiniteDuration]("nominal-rate.per")
+  lazy val targetJobRate = Rate(
+    jobRateConfig.as[Int]("target-rate.jobs"),
+    jobRateConfig.as[FiniteDuration]("target-rate.per")
   )
   
   lazy val rampupPercentage = jobRateConfig.as[PositivePercentage]("rampup-percentage")
 
-  lazy val jobExecutionTokenDispenserActor = context.actorOf(JobExecutionTokenDispenserActor.props(serviceRegistryActor, startJobRate, nominalJobRate, rampupPercentage), "JobTokenDispenserActor")
+  lazy val jobExecutionTokenDispenserActor = context.actorOf(JobExecutionTokenDispenserActor.props(serviceRegistryActor, startJobRate, targetJobRate, rampupPercentage), "JobTokenDispenserActor")
 
   lazy val workflowManagerActor = context.actorOf(
     WorkflowManagerActor.props(

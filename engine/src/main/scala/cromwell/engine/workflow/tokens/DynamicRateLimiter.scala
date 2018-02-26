@@ -43,6 +43,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     // Update the timer with the next rate
     if (needsUpdate) {
       timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
+      needsUpdate = false
       log.info("{} - New rate: {}", self.path.name, currentRate)
     }
   }
@@ -65,7 +66,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     highLoad(doLogging = false)
     stepCursor = stepCursor / 2
     timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
-    log.warning("{} - Very high load alert. Stop increasing token distribution rate and cutting it in half. Current rate: {}", self.path.name, currentRate)
+    log.warning("{} - Very high load alert. Stop increasing token distribution rate and cut it in half. Current rate: {}", self.path.name, currentRate)
   }
   
   // When load is critical, freeze everything (stop token distribution and stop increasing the rate)
@@ -75,7 +76,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     timers.cancel(ResetKey)
   }
   
-  // When back to normal, restart the token distribution timer if needed and re-initialize the next rate one
+  // When back to normal, restart the token distribution timer if needed and re-initialize the "next rate" timer
   def backToNormal() = {
     needsUpdate = true
     if (!timers.isTimerActive(ResetKey)) {
@@ -87,7 +88,6 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
 }
 
 object DynamicRateLimiter {
-  val RampUpTimeFactor = 10.seconds
   private case object ResetKey
   private case object ResetAction extends ControlMessage
 

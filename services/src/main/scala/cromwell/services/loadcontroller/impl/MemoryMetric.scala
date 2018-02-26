@@ -1,8 +1,8 @@
 package cromwell.services.loadcontroller.impl
 
 case object MemoryMetric extends LoadMetric {
-  val name = "freeMemoryPercentage"
-  val highLoadRange: Range = Range(60, 75)
-  val veryHighLoadRange: Range = Range(75, 90)
+  val name = "percentageMemoryUsed"
+  val highLoadRange: Range = Range(70, 80)
+  val veryHighLoadRange: Range = Range(80, 90)
   val criticalLoadRange: Range = Range(90, 100)
 }
