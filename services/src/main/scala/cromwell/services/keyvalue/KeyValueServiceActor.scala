@@ -1,10 +1,13 @@
 package cromwell.services.keyvalue
 
 import akka.actor.ActorRef
+import cats.data.NonEmptyList
 import cromwell.core.actor.BatchActor.CommandAndReplyTo
 import cromwell.core.actor.ReadActor
+import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.core.{JobKey, MonitoringCompanionHelper, WorkflowId}
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
+import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
 import cromwell.services.keyvalue.KeyValueServiceActor._
 
 import scala.concurrent.Future
@@ -39,20 +42,27 @@ object KeyValueServiceActor {
   final case class KvPutSuccess(action: KvPut) extends KvResponse with KvMessageWithAction
 }
 
-trait KeyValueServiceActor extends ReadActor[CommandAndReplyTo[KvAction]] with MonitoringCompanionHelper {
+trait KeyValueServiceActor extends ReadActor[CommandAndReplyTo[KvAction]] with InstrumentedBatchActor[CommandAndReplyTo[KvAction]] with MonitoringCompanionHelper with CromwellInstrumentation {
   override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[KvAction]] = {
     case c: KvAction => CommandAndReplyTo(c, snd)
   }
-  override def processHead(action: CommandAndReplyTo[KvAction]) = action.command match {
-    case get: KvGet => respond(action.replyTo, get, doGet(get))
-    case put: KvPut =>
-      addWork()
-      val putAction = doPut(put)
-      putAction andThen { case _ => removeWork() }
-      respond(action.replyTo, put, putAction)
+
+  override def processHead(action: CommandAndReplyTo[KvAction]) = instrumentedProcess {
+    val processed = action.command match {
+      case get: KvGet => respond(action.replyTo, get, doGet(get))
+      case put: KvPut =>
+        addWork()
+        val putAction = doPut(put)
+        putAction andThen { case _ => removeWork() }
+        respond(action.replyTo, put, putAction)
+    }
+    processed.map(_ => 1)
   }
 
-  override def receive = monitoringReceive.orElse(super.receive)
+  override def receive = monitoringReceive.orElse(instrumentationReceive).orElse(super.receive)
+
+  override protected def instrumentationPath = NonEmptyList.of("keyvalue")
+  override protected def instrumentationPrefix = InstrumentationPrefixes.ServicesPrefix
 
   def doPut(put: KvPut): Future[KvResponse]
   def doGet(get: KvGet): Future[KvResponse]

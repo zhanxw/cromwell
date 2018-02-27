@@ -61,7 +61,7 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
 
   def updateMetric(metric: LoadMetric, loadLevel: Int) = {
     loadMetrics = loadMetrics + (metric -> metric.loadLevel(loadLevel))
-    sendGauge(NonEmptyList.one(metric.name), loadLevel.toLong, InstrumentationPrefixes.LoadPrefix)
+    sendGauge(NonEmptyList.of("load", metric.name), loadLevel.toLong, InstrumentationPrefixes.ServicesPrefix)
   }
 
   def updateMemoryLoad() = updateMetric(MemoryMetric, percentageMemoryUsed)
