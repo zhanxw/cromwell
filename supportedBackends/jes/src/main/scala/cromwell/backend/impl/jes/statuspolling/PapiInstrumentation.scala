@@ -14,12 +14,12 @@ object PapiInstrumentation {
   private val PapiKey = NonEmptyList.of("papi")
   private val PapiPollKey = PapiKey.concat("poll")
   private val PapiRunKey = PapiKey.concat("run")
-  
+
   private val PapiPollFailedKey = PapiPollKey.concat(FailureKey)
   private val PapiRunFailedKey = PapiRunKey.concat(FailureKey)
   private val PapiPollRetriedKey = PapiPollKey.concat(RetryKey)
   private val PapiRunRetriedKey = PapiRunKey.concat(RetryKey)
-  
+
   implicit class StatsDPathGoogleEnhanced(val statsDPath: InstrumentationPath) extends AnyVal {
     def withGoogleThrowable(failure: Throwable) = {
       statsDPath.withThrowable(failure, GoogleUtil.extractStatusCode)
@@ -40,6 +40,6 @@ trait PapiInstrumentation extends CromwellInstrumentationActor { this: Actor =>
     case _: JesStatusPollQuery => increment(PapiPollRetriedKey.withGoogleThrowable(failedQuery.cause.e), BackendPrefix)
     case _: JesRunCreationQuery => increment(PapiRunRetriedKey.withGoogleThrowable(failedQuery.cause.e), BackendPrefix)
   }
-  
+
   def updateQueueSize(size: Int) = sendGauge(PapiKey.concat("queue_size"), size.toLong, BackendPrefix)
 }

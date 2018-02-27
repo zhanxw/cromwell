@@ -1,5 +1,6 @@
 package cromwell.engine.instrumentation
 
+import akka.actor.Actor
 import akka.http.scaladsl.model.{HttpRequest, HttpResponse}
 import akka.http.scaladsl.server.Directive0
 import akka.http.scaladsl.server.Directives.{extractRequest, mapResponse}
