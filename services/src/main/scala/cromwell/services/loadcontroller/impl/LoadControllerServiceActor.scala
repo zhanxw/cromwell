@@ -69,7 +69,6 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
   def checkLoad(): Unit = {
     updateMemoryLoad()
     val newLoadLevel = loadMetrics.values.max
-    log.info("Load level is {}", newLoadLevel)
     val escalates = loadLevelOrdering.lt(loadLevel, newLoadLevel)
     val backToNormal = loadLevel != NormalLoad && newLoadLevel == NormalLoad
     if (escalates || backToNormal) {
