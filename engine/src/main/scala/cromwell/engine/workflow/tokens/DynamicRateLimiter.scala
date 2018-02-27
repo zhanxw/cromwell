@@ -20,7 +20,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
   private val targetRate: Rate.Normalized = nominalRate.normalized
   private val steps = startRate.normalized.linearize(targetRate, rampUpPercentage)
 
-  private def currentRate: Rate.Normalized = steps(stepCursor)
+  private def currentRate: Rate.Normalized = steps(Math.min(stepCursor, steps.length - 1))
 
   protected def ratePreStart(): Unit = {
     if (!targetRate.isZero) {
