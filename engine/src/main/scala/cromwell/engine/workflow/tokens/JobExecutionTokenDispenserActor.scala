@@ -1,6 +1,7 @@
 package cromwell.engine.workflow.tokens
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Terminated, Timers}
+import cats.data.NonEmptyList
 import common.util.ConfigUtil.{OneToOneHundred, PositivePercentage}
 import cromwell.core.Dispatcher.EngineDispatcher
 import cromwell.core.JobExecutionToken._
@@ -115,6 +116,8 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
     context.unwatch(terminee)
     ()
   }
+
+  override protected def onRateUpdated(newRate: Rate.Normalized) = sendGaugeJob(TokenRateInstrumentation, newRate.n)
 }
 
 object JobExecutionTokenDispenserActor {
@@ -129,6 +132,7 @@ object JobExecutionTokenDispenserActor {
     case Left(_) => throw new Exception("Don't break the default !")
     case Right(p) => p
   }
+  val TokenRateInstrumentation = NonEmptyList.one("tokenRate")
 
   def props(serviceRegistryActor: ActorRef,
             startRate: Rate = DefaultStartRate,

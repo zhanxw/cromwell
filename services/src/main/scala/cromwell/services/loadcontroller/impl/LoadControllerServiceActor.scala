@@ -16,6 +16,7 @@ import scala.concurrent.duration._
 
 object LoadControllerServiceActor {
   val LoadControllerServiceName = "LoadController"
+  val LoadLevelInstrumentation = NonEmptyList.one("loadLevel")
   case object LoadControlTimerKey
   case object LoadControlTimerAction
 
@@ -75,6 +76,7 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
       gossip(newLoadLevel)
     }
     loadLevel = newLoadLevel
+    sendGauge(LoadLevelInstrumentation, loadLevel.level)
   }
 
   def percentageMemoryUsed = ((1 - ((maxMemory - runtime.freeMemory()) / maxMemory)) * 100).toInt
