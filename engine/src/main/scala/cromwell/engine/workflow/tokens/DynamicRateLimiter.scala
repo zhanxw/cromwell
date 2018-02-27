@@ -38,7 +38,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     case CriticalLoad => criticalLoad()
     case NormalLoad => backToNormal()
   }
-  
+
   private def updateRate() = {
     timers.startPeriodicTimer(ResetKey, ResetAction, currentRate.seconds.seconds)
     onRateUpdated(currentRate)
@@ -58,14 +58,14 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     needsUpdate = true
     timers.startSingleTimer(NextRateKey, NextRateAction, 1.minute)
   }
-  
+
   // When load is high, stabilize the rate of token distribution
   private def highLoad(doLogging: Boolean = true) = {
     needsUpdate = false
     timers.cancel(NextRateKey)
     if (doLogging) log.warning("{} - High load alert. Stop increasing token distribution rate. Current rate: {}", self.path.name, currentRate)
   }
-  
+
   // When load is very high, cut in half the rate of token distribution
   private def veryHighLoad() = {
     highLoad(doLogging = false)
@@ -73,14 +73,14 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
     updateRate()
     log.warning("{} - Very high load alert. Stop increasing token distribution rate and cut it in half. Current rate: {}", self.path.name, currentRate)
   }
-  
+
   // When load is critical, freeze everything
   private def criticalLoad() = {
     log.warning("{} - Critical load alert. Freeze token distribution.", self.path.name)
     timers.cancel(NextRateKey)
     timers.cancel(ResetKey)
   }
-  
+
   // When back to normal, restart the token distribution timer if needed and re-initialize the "next rate" timer
   private def backToNormal() = {
     needsUpdate = true
@@ -102,9 +102,9 @@ object DynamicRateLimiter {
   implicit class RateEnhancer(val n: Int) extends AnyVal {
     def per(duration: FiniteDuration) = Rate(n, duration)
   }
-  
+
   object Rate {
-    
+
     object Normalized {
       def Zero = Normalized(0, 0)
     }
@@ -120,19 +120,19 @@ object DynamicRateLimiter {
         val yRange = target.seconds - seconds
         val xSampleSize = xRange.toDouble / sampling
         val ySampleSize = yRange.toDouble / sampling
-        
+
         (1 to sampling).toArray
-          .map(sampleN => 
+          .map(sampleN =>
             Normalized(n + (xSampleSize * sampleN).toInt, seconds + (ySampleSize * sampleN).toInt)
           )
       }
-      
+
       def isZero = n == 0 || seconds == 0L
 
       override def toString = s"$n per $seconds seconds"
     }
   }
-  
+
   case class Rate(n: Int, per: FiniteDuration) {
     val normalized = Rate.Normalized(n.toInt, per.toSeconds)
     override def toString = s"$n per ${per.toSeconds} seconds"
