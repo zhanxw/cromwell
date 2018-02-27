@@ -653,6 +653,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
     val updatedData = data match {
       case responsePending: ResponsePendingData => responsePending.copy(hashes = Option(Success(hashes)))
       case responseData: ResponseData => responseData.withHashes(Option(Success(hashes)))
+      case _ => data
     }
     stay using updatedData
   }

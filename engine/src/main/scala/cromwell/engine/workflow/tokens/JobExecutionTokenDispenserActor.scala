@@ -117,7 +117,7 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
     ()
   }
 
-  override protected def onRateUpdated(newRate: Rate.Normalized) = sendGaugeJob(TokenRateInstrumentation, newRate.n)
+  override protected def onRateUpdated(newRate: Rate.Normalized) = sendGaugeJob(TokenRateInstrumentation, newRate.n.toLong)
 }
 
 object JobExecutionTokenDispenserActor {

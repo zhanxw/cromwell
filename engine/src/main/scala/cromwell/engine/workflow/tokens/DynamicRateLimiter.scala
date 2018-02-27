@@ -13,7 +13,7 @@ trait DynamicRateLimiter { this: Actor with Timers with ActorLogging =>
   protected def nominalRate: Rate
   protected def rampUpPercentage: PositivePercentage
   protected def serviceRegistryActor: ActorRef
-  protected def onRateUpdated(newRate: Rate.Normalized)
+  protected def onRateUpdated(newRate: Rate.Normalized): Unit
 
   private var stepCursor = 0
   private var needsUpdate: Boolean = false

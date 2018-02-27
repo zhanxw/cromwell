@@ -76,7 +76,7 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
       gossip(newLoadLevel)
     }
     loadLevel = newLoadLevel
-    sendGauge(LoadLevelInstrumentation, loadLevel.level)
+    sendGauge(LoadLevelInstrumentation, loadLevel.level.toLong)
   }
 
   def percentageMemoryUsed = ((1 - ((maxMemory - runtime.freeMemory()) / maxMemory)) * 100).toInt
