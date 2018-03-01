@@ -1,0 +1,13 @@
+name: docker_with_a_home
+testFormat: workflowsuccess
+ignore: true
+
+files {
+  wdl: home_dir/docker_with_a_home.wdl
+}
+
+metadata {
+  workflowName: docker_with_a_home
+  status: Succeeded
+  "calls.docker_with_a_home.home_sweet_home.outputs.home_dir": "/my/home/directory"
+}
