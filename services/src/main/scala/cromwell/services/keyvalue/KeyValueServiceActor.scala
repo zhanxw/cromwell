@@ -1,10 +1,13 @@
 package cromwell.services.keyvalue
 
 import akka.actor.ActorRef
+import cats.data.NonEmptyList
 import cromwell.core.actor.BatchActor.CommandAndReplyTo
 import cromwell.core.actor.ThrottlerActor
-import cromwell.core.{JobKey, WorkflowId}
+import cromwell.core.instrumentation.InstrumentationPrefixes
+import cromwell.core.{JobKey, MonitoringCompanionHelper, WorkflowId}
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
+import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
 import cromwell.services.keyvalue.KeyValueServiceActor._
 
 import scala.concurrent.Future
@@ -39,7 +42,7 @@ object KeyValueServiceActor {
   final case class KvPutSuccess(action: KvPut) extends KvResponse with KvMessageWithAction
 }
 
-trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] {
+trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] with InstrumentedBatchActor[CommandAndReplyTo[KvAction]] with MonitoringCompanionHelper with CromwellInstrumentation {
   override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[KvAction]] = {
     case c: KvAction => CommandAndReplyTo(c, snd)
   }
@@ -48,6 +51,11 @@ trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] {
     case get: KvGet => respond(action.replyTo, get, doGet(get))
     case put: KvPut => respond(action.replyTo, put, doPut(put))
   }
+
+  override def receive = instrumentationReceive.orElse(super.receive)
+
+  override protected def instrumentationPath = NonEmptyList.of("keyvalue")
+  override protected def instrumentationPrefix = InstrumentationPrefixes.ServicesPrefix
 
   def doPut(put: KvPut): Future[KvResponse]
   def doGet(get: KvGet): Future[KvResponse]

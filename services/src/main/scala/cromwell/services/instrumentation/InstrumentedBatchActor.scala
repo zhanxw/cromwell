@@ -1,44 +1,36 @@
 package cromwell.services.instrumentation
 
-import cats.data.NonEmptyVector
+import cats.data.NonEmptyList
 import cromwell.core.actor.BatchActor
-import cromwell.services.instrumentation.CromwellInstrumentation.InstrumentationPath
 import cromwell.services.instrumentation.InstrumentedBatchActor.{QueueSizeTimerAction, QueueSizeTimerKey}
 
 import scala.concurrent.Future
-import scala.concurrent.duration.FiniteDuration
 
 object InstrumentedBatchActor {
-  case object QueueSizeTimerKey  
-  case object QueueSizeTimerAction  
+  case object QueueSizeTimerKey
+  case object QueueSizeTimerAction
 }
 
 /**
   * Layer over batch actor that instruments the throughput and queue size
   */
-abstract class InstrumentedBatchActor[C](flushRate: FiniteDuration,
-                                         batchSize: Int,
-                                         instrumentationPath: InstrumentationPath,
-                                         instrumentationPrefix: Option[String]) extends BatchActor[C](flushRate, batchSize) 
-  with CromwellInstrumentationActor {
-  private val writePath = instrumentationPath.::("write")
+trait InstrumentedBatchActor[C] { this: BatchActor[C] with CromwellInstrumentation =>
+
+  protected def instrumentationPath: NonEmptyList[String]
+  protected def instrumentationPrefix: Option[String]
+
+  private val processedPath = instrumentationPath.::("processed")
   private val queueSizePath = instrumentationPath.::("queue")
 
   timers.startPeriodicTimer(QueueSizeTimerKey, QueueSizeTimerAction, CromwellInstrumentation.InstrumentationRate)
-  
-  whenUnhandled {
-    case Event(QueueSizeTimerAction, data) =>
-      sendGauge(queueSizePath, data.weight.toLong, instrumentationPrefix)
-      stay()
+
+  protected def instrumentationReceive: Receive = {
+    case QueueSizeTimerAction => sendGauge(queueSizePath, stateData.weight.toLong, instrumentationPrefix)
   }
   
-  protected def processInner(data: Vector[C]): Future[Int]
-  
-  override protected final def process(data: NonEmptyVector[C]) = {
-    val action = processInner(data.toVector)
-    action foreach { n =>
-      count(writePath, n.toLong, instrumentationPrefix)
-    }
+  protected def instrumentedProcess(f: => Future[Int]) = {
+    val action = f
+    action foreach { n => count(processedPath, n.toLong, instrumentationPrefix) }
     action
   }
 }

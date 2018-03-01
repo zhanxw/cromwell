@@ -1,10 +1,12 @@
 package cromwell.services.keyvalue
 
+import akka.actor.ActorRef
 import cromwell.services.keyvalue.KeyValueServiceActor._
 
 import scala.concurrent.{ExecutionContextExecutor, Future}
 
 final class InMemoryKvServiceActor extends KeyValueServiceActor {
+  override def serviceRegistryActor = ActorRef.noSender
   override implicit val ec: ExecutionContextExecutor = context.dispatcher
 
   var kvStore = Map.empty[ScopedKey, Option[String]]
