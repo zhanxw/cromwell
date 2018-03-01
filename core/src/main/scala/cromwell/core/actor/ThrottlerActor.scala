@@ -6,13 +6,14 @@ import cats.syntax.traverse._
 import cats.instances.vector._
 import cats.instances.future._
 import scala.concurrent.Future
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration._
 
 /**
   * By removing the periodic flush and setting the batch size to 1,
   * this actor modifies the behavior of BatchActor so that it throttles processing commands one at a time.
   */
-abstract class ThrottlerActor[C] extends BatchActor[C](Duration.Zero, 1) {
+abstract class ThrottlerActor[C] extends BatchActor[C](5.seconds, 1) {
+  override protected def logOnStartUp = false
   override def weightFunction(command: C) = 1
   override final def process(data: NonEmptyVector[C]): Future[Int] = {
     // This ShouldNotBePossible™ but in case it happens, instead of dropping elements process them all anyway

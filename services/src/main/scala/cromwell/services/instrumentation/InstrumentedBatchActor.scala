@@ -24,10 +24,22 @@ trait InstrumentedBatchActor[C] { this: BatchActor[C] with CromwellInstrumentati
 
   timers.startPeriodicTimer(QueueSizeTimerKey, QueueSizeTimerAction, CromwellInstrumentation.InstrumentationRate)
 
+  /**
+    * Don't forget to chain this into your receive method to instrument the queue size:
+    * override def receive = instrumentationReceive.orElse(super.receive)
+    * @return
+    */
   protected def instrumentationReceive: Receive = {
     case QueueSizeTimerAction => sendGauge(queueSizePath, stateData.weight.toLong, instrumentationPrefix)
   }
-  
+
+  /**
+    * Don't forget to wrap your `process` or `processHead` method with this function if you want
+    * to instrument your processing rate:
+    * instrumentedProcess {
+    *   do work
+    * }
+    */
   protected def instrumentedProcess(f: => Future[Int]) = {
     val action = f
     action foreach { n => count(processedPath, n.toLong, instrumentationPrefix) }

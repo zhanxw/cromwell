@@ -52,7 +52,8 @@ final case class MetadataServiceActor(serviceConfig: Config, globalConfig: Confi
 
   val dbFlushRate = serviceConfig.as[Option[FiniteDuration]]("db-flush-rate").getOrElse(5 seconds)
   val dbBatchSize = serviceConfig.as[Option[Int]]("db-batch-size").getOrElse(200)
-  val writeActor = context.actorOf(WriteMetadataActor.props(dbBatchSize, dbFlushRate, serviceRegistryActor), "WriteMetadataActor")
+  val queueThreshold = serviceConfig.as[Option[Int]]("metadata-queue-threshold").getOrElse(1 * 1000 * 1000)
+  val writeActor = context.actorOf(WriteMetadataActor.props(dbBatchSize, dbFlushRate, serviceRegistryActor, queueThreshold), "WriteMetadataActor")
   implicit val ec = context.dispatcher
   private var summaryRefreshCancellable: Option[Cancellable] = None
 

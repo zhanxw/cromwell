@@ -1,12 +1,15 @@
 package cromwell.jobstore
 
 import akka.actor.{ActorRef, Props}
-import cats.data.NonEmptyVector
+import cats.data.{NonEmptyList, NonEmptyVector}
 import cromwell.core.Dispatcher.EngineDispatcher
-import cromwell.core.actor.BatchActor._
 import cromwell.core.actor.BatchActor
+import cromwell.core.actor.BatchActor._
+import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.jobstore.JobStore.{JobCompletion, WorkflowCompletion}
 import cromwell.jobstore.JobStoreActor._
+import cromwell.services.instrumentation.{CromwellInstrumentationActor, InstrumentedBatchActor}
+import cromwell.services.loadcontroller.LoadControlledBatchActor
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -14,8 +17,18 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
 
-case class JobStoreWriterActor(jsd: JobStore, override val batchSize: Int, override val flushRate: FiniteDuration) extends 
-  BatchActor[CommandAndReplyTo[JobStoreWriterCommand]](flushRate, batchSize) {
+case class JobStoreWriterActor(jsd: JobStore,
+                               override val batchSize: Int,
+                               override val flushRate: FiniteDuration,
+                               serviceRegistryActor: ActorRef,
+                               threshold: Int
+                              )
+  extends BatchActor[CommandAndReplyTo[JobStoreWriterCommand]](flushRate, batchSize) 
+  with InstrumentedBatchActor[CommandAndReplyTo[JobStoreWriterCommand]]
+  with LoadControlledBatchActor[JobStoreWriteQueueMetric, CommandAndReplyTo[JobStoreWriterCommand]]
+  with CromwellInstrumentationActor {
+
+  override def metricClass = classOf[JobStoreWriteQueueMetric]
 
   override protected def weightFunction(command: CommandAndReplyTo[JobStoreWriterCommand]) = 1
 
@@ -23,7 +36,7 @@ case class JobStoreWriterActor(jsd: JobStore, override val batchSize: Int, overr
     case command: JobStoreWriterCommand => CommandAndReplyTo(command, snd)
   }
 
-  override protected def process(nonEmptyData: NonEmptyVector[CommandAndReplyTo[JobStoreWriterCommand]]) = {
+  override protected def process(nonEmptyData: NonEmptyVector[CommandAndReplyTo[JobStoreWriterCommand]]) = instrumentedProcess {
     val data = nonEmptyData.toVector
     log.debug("Flushing {} job store commands to the DB", data.length)
     val completions = data.collect({ case CommandAndReplyTo(c: JobStoreWriterCommand, _) => c.completion })
@@ -47,9 +60,19 @@ case class JobStoreWriterActor(jsd: JobStore, override val batchSize: Int, overr
       databaseAction.map(_ => 1)
     } else Future.successful(0)
   }
+
+  override def receive = instrumentationReceive.orElse(super.receive)
+
+  override protected def instrumentationPath = NonEmptyList.of("store", "write")
+  override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
 }
 
 object JobStoreWriterActor {
-
-  def props(jobStoreDatabase: JobStore, dbBatchSize: Int, dbFlushRate: FiniteDuration): Props = Props(new JobStoreWriterActor(jobStoreDatabase, dbBatchSize, dbFlushRate)).withDispatcher(EngineDispatcher)
+  def props(jobStoreDatabase: JobStore,
+            dbBatchSize: Int,
+            dbFlushRate: FiniteDuration,
+            registryActor: ActorRef): Props = {
+    Props(new JobStoreWriterActor(jobStoreDatabase, dbBatchSize, dbFlushRate, registryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
+  }
+  val QueueThreshold = 1 * 1000 * 1000
 }

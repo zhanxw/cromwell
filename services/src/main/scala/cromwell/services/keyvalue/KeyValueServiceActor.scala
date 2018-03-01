@@ -5,10 +5,11 @@ import cats.data.NonEmptyList
 import cromwell.core.actor.BatchActor.CommandAndReplyTo
 import cromwell.core.actor.ThrottlerActor
 import cromwell.core.instrumentation.InstrumentationPrefixes
-import cromwell.core.{JobKey, MonitoringCompanionHelper, WorkflowId}
+import cromwell.core.{JobKey, WorkflowId}
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
 import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
 import cromwell.services.keyvalue.KeyValueServiceActor._
+import cromwell.services.loadcontroller.LoadControlledBatchActor
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
@@ -40,16 +41,24 @@ object KeyValueServiceActor {
   final case class KvFailure(action: KvAction, failure: Throwable) extends KvResponse with KvMessageWithAction
   final case class KvKeyLookupFailed(action: KvGet) extends KvResponse with KvMessageWithAction
   final case class KvPutSuccess(action: KvPut) extends KvResponse with KvMessageWithAction
+
+  val QueueThreshold = 1 * 1000 * 1000
 }
 
-trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] with InstrumentedBatchActor[CommandAndReplyTo[KvAction]] with MonitoringCompanionHelper with CromwellInstrumentation {
+trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] 
+  with InstrumentedBatchActor[CommandAndReplyTo[KvAction]] 
+  with LoadControlledBatchActor[KeyValueQueueMetric, CommandAndReplyTo[KvAction]] 
+  with CromwellInstrumentation {
+  override def threshold = 1 * 1000 * 1000
   override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[KvAction]] = {
     case c: KvAction => CommandAndReplyTo(c, snd)
   }
-
-  override def processHead(action: CommandAndReplyTo[KvAction]) = action.command match {
-    case get: KvGet => respond(action.replyTo, get, doGet(get))
-    case put: KvPut => respond(action.replyTo, put, doPut(put))
+  override def metricClass = classOf[KeyValueQueueMetric]
+  override def processHead(action: CommandAndReplyTo[KvAction]) = instrumentedProcess {
+    action.command match {
+      case get: KvGet => respond(action.replyTo, get, doGet(get)).map(_ => 1)
+      case put: KvPut => respond(action.replyTo, put, doPut(put)).map(_ => 1)
+    }
   }
 
   override def receive = instrumentationReceive.orElse(super.receive)

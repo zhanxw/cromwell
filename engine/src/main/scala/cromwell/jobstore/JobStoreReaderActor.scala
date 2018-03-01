@@ -8,16 +8,25 @@ import cromwell.core.actor.ThrottlerActor
 import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.jobstore.JobStoreActor.{JobComplete, JobNotComplete, JobStoreReadFailure, QueryJobCompletion}
 import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
+import cromwell.services.loadcontroller.LoadControlledBatchActor
 
 import scala.util.{Failure, Success}
 
 object JobStoreReaderActor {
-  def props(database: JobStore, registryActor: ActorRef) = Props(new JobStoreReaderActor(database, registryActor)).withDispatcher(EngineDispatcher)
+  val QueueThreshold = 1 * 1000 * 1000
+  def props(database: JobStore, registryActor: ActorRef) = Props(new JobStoreReaderActor(database, registryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
 }
 
-class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor: ActorRef) extends ThrottlerActor[CommandAndReplyTo[QueryJobCompletion]] with InstrumentedBatchActor[CommandAndReplyTo[QueryJobCompletion]] with ActorLogging with CromwellInstrumentation {
+class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor: ActorRef, override val threshold: Int)
+  extends ThrottlerActor[CommandAndReplyTo[QueryJobCompletion]]
+    with InstrumentedBatchActor[CommandAndReplyTo[QueryJobCompletion]]
+    with LoadControlledBatchActor[JobStoreReadQueueMetric, CommandAndReplyTo[QueryJobCompletion]]
+    with ActorLogging
+    with CromwellInstrumentation {
+
+  override def metricClass = classOf[JobStoreReadQueueMetric]
   override def processHead(head: CommandAndReplyTo[QueryJobCompletion]) = instrumentedProcess {
-    val action = database.readJobResult(head.command.jobKey, head.command.taskOutputs) 
+    val action = database.readJobResult(head.command.jobKey, head.command.taskOutputs)
     action onComplete {
       case Success(Some(result)) => head.replyTo ! JobComplete(result)
       case Success(None) => head.replyTo ! JobNotComplete
@@ -27,7 +36,7 @@ class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor:
     }
     action.map(_ => 1)
   }
-  
+
   override def receive = instrumentationReceive.orElse(super.receive)
 
   override def commandToData(snd: ActorRef) = {

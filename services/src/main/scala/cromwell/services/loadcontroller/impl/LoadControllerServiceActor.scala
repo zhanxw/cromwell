@@ -4,11 +4,8 @@ import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
 import akka.routing.Listeners
 import cats.data.NonEmptyList
 import com.typesafe.config.Config
-import cromwell.core.actor.BatchActor.QueueWeight
-import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.services.instrumentation.CromwellInstrumentation
 import cromwell.services.loadcontroller.LoadControllerService._
-import cromwell.services.loadcontroller.LoadMetric
 import cromwell.services.loadcontroller.impl.LoadControllerServiceActor._
 import cromwell.services.metadata.MetadataService.ListenToMetadataWriteActor
 import cromwell.util.GracefulShutdownHelper.ShutdownCommand
@@ -18,7 +15,7 @@ import scala.concurrent.duration._
 
 object LoadControllerServiceActor {
   val LoadControllerServiceName = "LoadController"
-  val LoadLevelInstrumentation = NonEmptyList.one("loadLevel")
+  val LoadInstrumentationPrefix = Option("load")
   case object LoadControlTimerKey
   case object LoadControlTimerAction
 }
@@ -26,11 +23,12 @@ object LoadControllerServiceActor {
 /**
   * Service Actor that monitors load and sends alert to the rest of the system when load is determined abnormal.
   */
-class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, override val serviceRegistryActor: ActorRef) extends Actor
+class LoadControllerServiceActor(serviceConfig: Config,
+                                 globalConfig: Config,
+                                 override val serviceRegistryActor: ActorRef
+                                ) extends Actor
   with ActorLogging with Listeners with Timers with CromwellInstrumentation {
   private val controlFrequency = serviceConfig.as[Option[FiniteDuration]]("control-frequency").getOrElse(5.seconds)
-  private val metadataQueueThreshold = serviceConfig.as[Option[Int]]("metadata-queue-threshold").getOrElse(1 * 1000 * 1000)
-  private val metadataQueueMetric = MetadataQueueMetric(metadataQueueThreshold)
 
   private var loadLevel: LoadLevel = NormalLoad
   private var loadMetrics: Map[LoadMetric, LoadLevel] = Map.empty
@@ -43,15 +41,15 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
     super.preStart()
   }
 
-  private def controlReceive: Receive = {
+  private val controlReceive: Receive = {
+    case metric: LoadMetric => updateMetric(metric)
     case LoadControlTimerAction => checkLoad()
-    case QueueWeight(weight) => updateMetric(metadataQueueMetric, weight)
     case ShutdownCommand => context stop self
   }
 
-  def updateMetric(metric: LoadMetric, loadLevel: Int) = {
-    loadMetrics = loadMetrics + (metric -> metric.loadLevel(loadLevel))
-    sendGauge(NonEmptyList.of("load", metric.name), loadLevel.toLong, InstrumentationPrefixes.ServicesPrefix)
+  def updateMetric(metric: LoadMetric): Unit = {
+    loadMetrics = loadMetrics + (metric -> metric.loadLevel)
+    sendGauge(NonEmptyList.one(metric.name), loadLevel.level.toLong, LoadInstrumentationPrefix)
   }
 
   def checkLoad(): Unit = {
@@ -64,6 +62,6 @@ class LoadControllerServiceActor(serviceConfig: Config, globalConfig: Config, ov
     // If there's something to say, let it out !
     if (escalates || backToNormal) gossip(newLoadLevel)
     loadLevel = newLoadLevel
-    sendGauge(LoadLevelInstrumentation, loadLevel.level.toLong)
+    sendGauge(NonEmptyList.one("global"), loadLevel.level.toLong, LoadInstrumentationPrefix)
   }
 }

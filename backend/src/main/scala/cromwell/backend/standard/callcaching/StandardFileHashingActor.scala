@@ -2,17 +2,19 @@ package cromwell.backend.standard.callcaching
 
 import java.util.concurrent.TimeoutException
 
-import akka.actor.{Actor, ActorLogging, ActorRef}
+import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
 import akka.event.LoggingAdapter
 import cromwell.backend.standard.StandardCachingActorHelper
-import cromwell.backend.standard.callcaching.StandardFileHashingActor.{FileHashResponse, SingleFileHashRequest}
+import cromwell.backend.standard.callcaching.StandardFileHashingActor._
 import cromwell.backend.{BackendConfigurationDescriptor, BackendInitializationData, BackendJobDescriptor}
 import cromwell.core.JobKey
 import cromwell.core.callcaching._
 import cromwell.core.io._
 import cromwell.core.logging.JobLogging
+import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadLevel, LoadMetric, NormalLoad}
 import wom.values.WomFile
 
+import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -54,18 +56,40 @@ object StandardFileHashingActor {
 
   sealed trait BackendSpecificHasherResponse extends SuccessfulHashResultMessage
   case class FileHashResponse(hashResult: HashResult) extends BackendSpecificHasherResponse { override def hashes = Set(hashResult) }
+  case class FileHashingMetric(loadLevel: LoadLevel) extends LoadMetric {
+    override val name = "fileHashing"
+  }
+  case object BackPressureTimerResetKey
+  case object BackPressureTimerResetAction
 }
 
-abstract class StandardFileHashingActor(standardParams: StandardFileHashingActorParams) extends Actor with ActorLogging with JobLogging with IoClientHelper with StandardCachingActorHelper {
+abstract class StandardFileHashingActor(standardParams: StandardFileHashingActorParams)
+  extends Actor
+    with ActorLogging
+    with JobLogging
+    with IoClientHelper
+    with StandardCachingActorHelper
+    with Timers {
   override lazy val ioActor = standardParams.ioActor
   override lazy val jobDescriptor: BackendJobDescriptor = standardParams.jobDescriptor
   override lazy val backendInitializationDataOption: Option[BackendInitializationData] = standardParams.backendInitializationDataOption
   override lazy val serviceRegistryActor: ActorRef = standardParams.serviceRegistryActor
   override lazy val configurationDescriptor: BackendConfigurationDescriptor = standardParams.configurationDescriptor
-  
+
   protected def ioCommandBuilder: IoCommandBuilder = DefaultIoCommandBuilder
-  
+
+  override def onBackpressure() = {
+    serviceRegistryActor ! FileHashingMetric(HighLoad)
+    // Because this method will be called every time we get backpressured, the timer will be overridden every
+    // time until we're not backpressured anymore
+    timers.startSingleTimer(BackPressureTimerResetKey, BackPressureTimerResetAction, 30.seconds)
+  }
+
   def customHashStrategy(fileRequest: SingleFileHashRequest): Option[Try[String]] = None
+  
+  def backPressureResetReceive: Receive = {
+    case BackPressureTimerResetAction => serviceRegistryActor ! FileHashingMetric(NormalLoad)
+  }
 
   def fileHashingReceive: Receive = {
     // Hash Request
@@ -101,7 +125,7 @@ abstract class StandardFileHashingActor(standardParams: StandardFileHashingActor
     }
   }
 
-  override def receive: Receive = ioReceive orElse fileHashingReceive
+  override def receive: Receive = ioReceive orElse fileHashingReceive orElse backPressureResetReceive
 
   override protected def onTimeout(message: Any, to: ActorRef): Unit = {
     message match {

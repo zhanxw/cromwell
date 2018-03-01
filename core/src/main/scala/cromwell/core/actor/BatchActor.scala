@@ -49,17 +49,26 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
 
   implicit val ec = context.dispatcher
   private val name = self.path.name
+  
+  protected def logOnStartUp: Boolean = true
 
   override def preStart(): Unit = {
-    log.info("{} configured to flush with batch size {} and process rate {}.", name, batchSize, flushRate)
+    if (logOnStartUp) log.info("{} configured to flush with batch size {} and process rate {}.", name, batchSize, flushRate)
     if (flushRate != Duration.Zero) {
       timers.startPeriodicTimer(ScheduledFlushKey, ScheduledProcessAction, flushRate)
     }
+    super.preStart()
   }
 
   startWith(WaitingToProcess, WeightedQueue.empty[C, Int](weightFunction))
 
   def commandToData(snd: ActorRef): PartialFunction[Any, C]
+
+  /**
+    * This method is called periodically with the current weight of the queue.
+    * Subclasses can use the information at their will
+    */
+  def weightUpdate(weight: Int): Unit = {}
 
   when(WaitingToProcess) {
     // On a regular event, only process if we're above the batch size is reached
@@ -67,7 +76,7 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
       processIfBatchSizeReached(data.enqueue(commandToData(sender)(command)))
     // On a scheduled process, always process. Use the opportunity to broadcast the current queue weight
     case Event(ScheduledProcessAction, data) =>
-      gossip(QueueWeight(data.weight))
+      weightUpdate(data.weight)
       processHead(data)
     case Event(ShutdownCommand, data) =>
       logger.info(s"{} Shutting down: ${data.weight} queued messages to process", self.path.name)
@@ -81,7 +90,7 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
       stay() using data.enqueue(commandToData(sender)(command))
     // Already processing, can only do one at a time. Use the opportunity to broadcast the current queue weight
     case Event(ScheduledProcessAction, data) =>
-      gossip(QueueWeight(data.weight))
+      weightUpdate(data.weight)
       stay()
     // Process is complete and we're shutting down so process even if we're under batch size
     case Event(ProcessingComplete, data) if shuttingDown =>

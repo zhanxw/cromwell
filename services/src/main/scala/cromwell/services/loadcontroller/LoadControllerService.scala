@@ -7,6 +7,11 @@ object LoadControllerService {
   sealed trait LoadControllerMessage extends ServiceRegistryMessage {
     def serviceName = LoadControllerServiceName
   }
+  trait LoadMetric extends LoadControllerMessage {
+    def name: String
+    def loadLevel: LoadLevel
+  }
+
   sealed trait LoadLevel { def level: Int }
   case object NormalLoad extends LoadLevel { val level = 0 }
   // Start with a single abnormal load level for now and we can add more if we want to be more granular

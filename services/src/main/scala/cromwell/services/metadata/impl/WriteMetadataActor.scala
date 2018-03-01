@@ -1,6 +1,7 @@
 package cromwell.services.metadata.impl
 
 import akka.actor.{ActorLogging, ActorRef, Props}
+import akka.routing.Listen
 import cats.data.NonEmptyVector
 import cromwell.core.Dispatcher.ServiceDispatcher
 import cromwell.core.Mailbox.PriorityMailbox
@@ -8,6 +9,7 @@ import cromwell.core.actor.BatchActor
 import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.services.MetadataServicesStore
 import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
+import cromwell.services.loadcontroller.LoadControlledBatchActor
 import cromwell.services.metadata.MetadataEvent
 import cromwell.services.metadata.MetadataService._
 
@@ -17,16 +19,24 @@ import scala.util.{Failure, Success}
 
 class WriteMetadataActor(override val batchSize: Int,
                          override val flushRate: FiniteDuration,
-                         override val serviceRegistryActor: ActorRef)
-  extends BatchActor[MetadataWriteAction](flushRate, batchSize) with InstrumentedBatchActor[MetadataWriteAction] with ActorLogging with
-    MetadataDatabaseAccess with MetadataServicesStore with CromwellInstrumentation {
-  
+                         override val serviceRegistryActor: ActorRef,
+                         override val threshold: Int)
+  extends BatchActor[MetadataWriteAction](flushRate, batchSize)
+    with InstrumentedBatchActor[MetadataWriteAction]
+    with ActorLogging
+    with MetadataDatabaseAccess
+    with MetadataServicesStore
+    with LoadControlledBatchActor[MetadataQueueMetric, MetadataWriteAction]
+    with CromwellInstrumentation {
+
+  override def metricClass = classOf[MetadataQueueMetric]
+
   def commandToData(snd: ActorRef): PartialFunction[Any, MetadataWriteAction] = {
     case command: MetadataWriteAction => command
   }
-  
+
   override def receive = instrumentationReceive.orElse(super.receive)
-  
+
   override def process(e: NonEmptyVector[MetadataWriteAction]) = instrumentedProcess {
     val empty = (Vector.empty[MetadataEvent], Map.empty[Iterable[MetadataEvent], ActorRef])
 
@@ -59,8 +69,9 @@ object WriteMetadataActor {
 
   def props(dbBatchSize: Int,
             flushRate: FiniteDuration,
-            serviceRegistryActor: ActorRef): Props =
-    Props(new WriteMetadataActor(dbBatchSize, flushRate, serviceRegistryActor))
+            serviceRegistryActor: ActorRef,
+            threshold: Int): Props =
+    Props(new WriteMetadataActor(dbBatchSize, flushRate, serviceRegistryActor, threshold))
       .withDispatcher(ServiceDispatcher)
       .withMailbox(PriorityMailbox)
 }
