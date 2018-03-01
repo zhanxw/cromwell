@@ -125,7 +125,7 @@ abstract class StandardFileHashingActor(standardParams: StandardFileHashingActor
     }
   }
 
-  override def receive: Receive = ioReceive orElse fileHashingReceive orElse backPressureResetReceive
+  override def receive: Receive = ioReceive orElse backPressureResetReceive orElse fileHashingReceive 
 
   override protected def onTimeout(message: Any, to: ActorRef): Unit = {
     message match {
