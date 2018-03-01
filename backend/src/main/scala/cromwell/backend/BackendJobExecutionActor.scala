@@ -1,6 +1,6 @@
 package cromwell.backend
 
-import akka.actor.ActorLogging
+import akka.actor.{ActorLogging, ActorRef}
 import akka.event.LoggingReceive
 import cromwell.backend.BackendJobExecutionActor._
 import cromwell.backend.BackendLifecycleActor._
@@ -29,7 +29,9 @@ object BackendJobExecutionActor {
 
   sealed trait BackendJobExecutionResponse extends BackendJobExecutionActorResponse { def jobKey: JobKey }
   case class JobSucceededResponse(jobKey: BackendJobDescriptorKey, returnCode: Option[Int], jobOutputs: CallOutputs, jobDetritusFiles: Option[Map[String, Path]], executionEvents: Seq[ExecutionEvent], dockerImageUsed: Option[String]) extends BackendJobExecutionResponse
-  case class JobAbortedResponse(jobKey: BackendJobDescriptorKey) extends BackendJobExecutionResponse
+  case class JobAbortedResponse(jobKey: BackendJobDescriptorKey)(implicit creator: ActorRef) extends BackendJobExecutionResponse {
+    println("Aborted response created by " + creator.path.name)
+  }
   
   sealed trait BackendJobFailedResponse extends BackendJobExecutionResponse {  def throwable: Throwable; def returnCode: Option[Int] }
   case class JobFailedNonRetryableResponse(jobKey: JobKey, throwable: Throwable, returnCode: Option[Int]) extends BackendJobFailedResponse
