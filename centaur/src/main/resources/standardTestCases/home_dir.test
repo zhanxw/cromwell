@@ -1,6 +1,5 @@
 name: docker_with_a_home
 testFormat: workflowsuccess
-ignore: true
 
 files {
   wdl: home_dir/docker_with_a_home.wdl
