@@ -11,10 +11,9 @@ import cromwell.services.instrumentation.CromwellInstrumentation._
 import cromwell.services.instrumentation.CromwellInstrumentationScheduler
 import cromwell.util.GracefulShutdownHelper.ShutdownCommand
 import io.github.andrebeat.pool.Lease
-import scala.concurrent.duration._
 
-class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRef, rate: Rate) extends Actor with ActorLogging 
-  with JobInstrumentation with CromwellInstrumentationScheduler with Timers {
+class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRef, override val distributionRate: DynamicRateLimiter.Rate) extends Actor with ActorLogging 
+  with JobInstrumentation with CromwellInstrumentationScheduler with Timers with DynamicRateLimiter {
 
   /**
     * Lazily created token queue. We only create a queue for a token type when we need it
@@ -28,9 +27,7 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
   }
 
   override def preStart() = {
-    // Fixed for now, but soon to be modifiable 
-    log.info("{} Running with rate: {}", self.path.name, rate)
-    timers.startPeriodicTimer(TokensTimerKey, TokensAvailable(rate.n), rate.per)
+    ratePreStart()
     super.preStart()
   }
 
@@ -107,11 +104,10 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
 }
 
 object JobExecutionTokenDispenserActor {
-  case class Rate(n: Int, per: FiniteDuration)
   case object TokensTimerKey
   case class TokensAvailable(n: Int)
 
-  def props(serviceRegistryActor: ActorRef, rate: Rate) = Props(new JobExecutionTokenDispenserActor(serviceRegistryActor, rate)).withDispatcher(EngineDispatcher)
+  def props(serviceRegistryActor: ActorRef, rate: DynamicRateLimiter.Rate) = Props(new JobExecutionTokenDispenserActor(serviceRegistryActor, rate)).withDispatcher(EngineDispatcher)
 
   case class JobExecutionTokenRequest(jobExecutionTokenType: JobExecutionTokenType)
 
