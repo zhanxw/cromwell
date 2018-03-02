@@ -1,6 +1,6 @@
 workflow docker_with_a_home {
 
-    String docker_image = "us.gcr.io/broad-dsde-cromwell-dev/docker-with-a-home"
+    String docker_image = "broadinstitute/cromwell-docker-test:docker-with-a-home"
 
     call home_sweet_home {
         input:

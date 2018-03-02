@@ -3,6 +3,7 @@ testFormat: workflowsuccess
 
 files {
   wdl: home_dir/docker_with_a_home.wdl
+  options: home_dir/
 }
 
 metadata {
