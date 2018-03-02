@@ -31,7 +31,7 @@ class LoadControllerServiceActor(serviceConfig: Config,
   private val controlFrequency = serviceConfig.as[Option[FiniteDuration]]("control-frequency").getOrElse(5.seconds)
 
   private var loadLevel: LoadLevel = NormalLoad
-  private var loadMetrics: Map[LoadMetric, LoadLevel] = Map.empty
+  private var loadMetrics: Map[NonEmptyList[String], LoadLevel] = Map.empty
 
   override def receive = listenerManagement.orElse(controlReceive)
 
@@ -48,7 +48,7 @@ class LoadControllerServiceActor(serviceConfig: Config,
   }
 
   def updateMetric(metric: LoadMetric): Unit = {
-    loadMetrics = loadMetrics + (metric -> metric.loadLevel)
+    loadMetrics = loadMetrics + (metric.name -> metric.loadLevel)
     sendGauge(metric.name, metric.loadLevel.level.toLong, LoadInstrumentationPrefix)
   }
 

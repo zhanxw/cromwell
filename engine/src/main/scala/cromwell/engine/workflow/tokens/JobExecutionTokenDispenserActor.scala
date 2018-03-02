@@ -10,6 +10,7 @@ import cromwell.engine.workflow.tokens.JobExecutionTokenDispenserActor._
 import cromwell.engine.workflow.tokens.TokenQueue.LeasedActor
 import cromwell.services.instrumentation.CromwellInstrumentation._
 import cromwell.services.instrumentation.CromwellInstrumentationScheduler
+import cromwell.services.loadcontroller.LoadControllerService.ListenToLoadController
 import cromwell.util.GracefulShutdownHelper.ShutdownCommand
 import io.github.andrebeat.pool.Lease
 
@@ -29,6 +30,7 @@ class JobExecutionTokenDispenserActor(override val serviceRegistryActor: ActorRe
 
   override def preStart() = {
     ratePreStart()
+    serviceRegistryActor ! ListenToLoadController
     super.preStart()
   }
 
