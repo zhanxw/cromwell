@@ -4,11 +4,9 @@ import akka.actor.{ActorLogging, ActorRef, Props}
 import cats.data.NonEmptyList
 import cromwell.core.Dispatcher.EngineDispatcher
 import cromwell.core.actor.BatchActor.CommandAndReplyTo
-import cromwell.core.actor.ThrottlerActor
 import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.jobstore.JobStoreActor.{JobComplete, JobNotComplete, JobStoreReadFailure, QueryJobCompletion}
-import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
-import cromwell.services.loadcontroller.LoadControlledBatchActor
+import cromwell.services.EnhancedThrottlerActor
 
 import scala.util.{Failure, Success}
 
@@ -18,13 +16,9 @@ object JobStoreReaderActor {
 }
 
 class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor: ActorRef, override val threshold: Int)
-  extends ThrottlerActor[CommandAndReplyTo[QueryJobCompletion]]
-    with InstrumentedBatchActor[CommandAndReplyTo[QueryJobCompletion]]
-    with LoadControlledBatchActor[JobStoreReadQueueMetric, CommandAndReplyTo[QueryJobCompletion]]
-    with ActorLogging
-    with CromwellInstrumentation {
+  extends EnhancedThrottlerActor[CommandAndReplyTo[QueryJobCompletion]]
+    with ActorLogging {
 
-  override def metricClass = classOf[JobStoreReadQueueMetric]
   override def processHead(head: CommandAndReplyTo[QueryJobCompletion]) = instrumentedProcess {
     val action = database.readJobResult(head.command.jobKey, head.command.taskOutputs)
     action onComplete {
@@ -37,12 +31,11 @@ class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor:
     action.map(_ => 1)
   }
 
+  // EnhancedBatchActorOverrides
   override def receive = instrumentationReceive.orElse(super.receive)
-
+  override protected def instrumentationPath = NonEmptyList.of("store", "read")
+  override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
   override def commandToData(snd: ActorRef) = {
     case query: QueryJobCompletion => CommandAndReplyTo(query, sender())
   }
-
-  override protected def instrumentationPath = NonEmptyList.of("store", "read")
-  override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
 }

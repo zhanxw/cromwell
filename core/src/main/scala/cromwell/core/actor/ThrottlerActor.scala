@@ -26,5 +26,5 @@ abstract class ThrottlerActor[C] extends BatchActor[C](5.seconds, 1) {
       data.toVector.traverse[Future, Any](processHead).map(_.length)
     } else processHead(data.head).map(_ => 1)
   }
-  def processHead(head: C): Future[Any]
+  def processHead(head: C): Future[Int]
 }

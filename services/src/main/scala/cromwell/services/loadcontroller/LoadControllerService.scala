@@ -7,10 +7,7 @@ object LoadControllerService {
   sealed trait LoadControllerMessage extends ServiceRegistryMessage {
     def serviceName = LoadControllerServiceName
   }
-  trait LoadMetric extends LoadControllerMessage {
-    def name: String
-    def loadLevel: LoadLevel
-  }
+  case class LoadMetric(name: String, loadLevel: LoadLevel) extends LoadControllerMessage
 
   sealed trait LoadLevel { def level: Int }
   case object NormalLoad extends LoadLevel { val level = 0 }

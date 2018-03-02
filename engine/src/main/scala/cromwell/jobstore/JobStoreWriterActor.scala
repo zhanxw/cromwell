@@ -3,13 +3,11 @@ package cromwell.jobstore
 import akka.actor.{ActorRef, Props}
 import cats.data.{NonEmptyList, NonEmptyVector}
 import cromwell.core.Dispatcher.EngineDispatcher
-import cromwell.core.actor.BatchActor
 import cromwell.core.actor.BatchActor._
 import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.jobstore.JobStore.{JobCompletion, WorkflowCompletion}
 import cromwell.jobstore.JobStoreActor._
-import cromwell.services.instrumentation.{CromwellInstrumentationActor, InstrumentedBatchActor}
-import cromwell.services.loadcontroller.LoadControlledBatchActor
+import cromwell.services.EnhancedBatchActor
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -23,18 +21,7 @@ case class JobStoreWriterActor(jsd: JobStore,
                                serviceRegistryActor: ActorRef,
                                threshold: Int
                               )
-  extends BatchActor[CommandAndReplyTo[JobStoreWriterCommand]](flushRate, batchSize) 
-  with InstrumentedBatchActor[CommandAndReplyTo[JobStoreWriterCommand]]
-  with LoadControlledBatchActor[JobStoreWriteQueueMetric, CommandAndReplyTo[JobStoreWriterCommand]]
-  with CromwellInstrumentationActor {
-
-  override def metricClass = classOf[JobStoreWriteQueueMetric]
-
-  override protected def weightFunction(command: CommandAndReplyTo[JobStoreWriterCommand]) = 1
-
-  def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[JobStoreWriterCommand]] = {
-    case command: JobStoreWriterCommand => CommandAndReplyTo(command, snd)
-  }
+  extends EnhancedBatchActor[CommandAndReplyTo[JobStoreWriterCommand]](flushRate, batchSize) {
 
   override protected def process(nonEmptyData: NonEmptyVector[CommandAndReplyTo[JobStoreWriterCommand]]) = instrumentedProcess {
     val data = nonEmptyData.toVector
@@ -61,10 +48,14 @@ case class JobStoreWriterActor(jsd: JobStore,
     } else Future.successful(0)
   }
 
+  // EnhancedBatchActor overrides
   override def receive = instrumentationReceive.orElse(super.receive)
-
+  override protected def weightFunction(command: CommandAndReplyTo[JobStoreWriterCommand]) = 1
   override protected def instrumentationPath = NonEmptyList.of("store", "write")
   override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
+  override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[JobStoreWriterCommand]] = {
+    case command: JobStoreWriterCommand => CommandAndReplyTo(command, snd)
+  }
 }
 
 object JobStoreWriterActor {

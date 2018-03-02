@@ -1,18 +1,12 @@
 package cromwell.services.keyvalue
 
-import akka.actor.ActorRef
+import akka.actor.{Actor, ActorLogging, Props}
 import cats.data.NonEmptyList
-import cromwell.core.actor.BatchActor.CommandAndReplyTo
-import cromwell.core.actor.ThrottlerActor
-import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.core.{JobKey, WorkflowId}
 import cromwell.services.ServiceRegistryActor.ServiceRegistryMessage
-import cromwell.services.instrumentation.{CromwellInstrumentation, InstrumentedBatchActor}
 import cromwell.services.keyvalue.KeyValueServiceActor._
-import cromwell.services.loadcontroller.LoadControlledBatchActor
-
-import scala.concurrent.Future
-import scala.util.{Failure, Success}
+import cromwell.util.GracefulShutdownHelper
+import cromwell.util.GracefulShutdownHelper.ShutdownCommand
 
 object KeyValueServiceActor {
   final case class KvJobKey(callFqn: String, callIndex: Option[Int], callAttempt: Int)
@@ -37,43 +31,25 @@ object KeyValueServiceActor {
 
   sealed trait KvResponse extends KvMessage
 
-  final case class KvPair(key: ScopedKey, value: Option[String]) extends KvResponse
+  final case class KvPair(key: ScopedKey, value: String) extends KvResponse
   final case class KvFailure(action: KvAction, failure: Throwable) extends KvResponse with KvMessageWithAction
   final case class KvKeyLookupFailed(action: KvGet) extends KvResponse with KvMessageWithAction
   final case class KvPutSuccess(action: KvPut) extends KvResponse with KvMessageWithAction
 
-  val QueueThreshold = 1 * 1000 * 1000
+  val QueueThreshold = 10 * 1000
+  val InstrumentationPath = NonEmptyList.of("keyvalue")
 }
 
-trait KeyValueServiceActor extends ThrottlerActor[CommandAndReplyTo[KvAction]] 
-  with InstrumentedBatchActor[CommandAndReplyTo[KvAction]] 
-  with LoadControlledBatchActor[KeyValueQueueMetric, CommandAndReplyTo[KvAction]] 
-  with CromwellInstrumentation {
-  override def threshold = 1 * 1000 * 1000
-  override def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[KvAction]] = {
-    case c: KvAction => CommandAndReplyTo(c, snd)
-  }
-  override def metricClass = classOf[KeyValueQueueMetric]
-  override def processHead(action: CommandAndReplyTo[KvAction]) = instrumentedProcess {
-    action.command match {
-      case get: KvGet => respond(action.replyTo, get, doGet(get)).map(_ => 1)
-      case put: KvPut => respond(action.replyTo, put, doPut(put)).map(_ => 1)
-    }
-  }
-
-  override def receive = instrumentationReceive.orElse(super.receive)
-
-  override protected def instrumentationPath = NonEmptyList.of("keyvalue")
-  override protected def instrumentationPrefix = InstrumentationPrefixes.ServicesPrefix
-
-  def doPut(put: KvPut): Future[KvResponse]
-  def doGet(get: KvGet): Future[KvResponse]
-
-  private def respond(replyTo: ActorRef, action: KvAction, response: Future[KvResponse]): Future[KvResponse] = {
-    response.onComplete {
-      case Success(x) => replyTo ! x
-      case Failure(ex) => replyTo ! KvFailure(action, ex)
-    }
-    response
+trait KeyValueServiceActor extends Actor with GracefulShutdownHelper with ActorLogging {
+  protected def kvReadActorProps: Props
+  protected def kvWriteActorProps: Props
+  
+  private val kvReadActor = context.actorOf(kvReadActorProps, "KvReadActor")
+  private val kvWriteActor = context.actorOf(kvWriteActorProps, "KvWriteActor")
+  
+  override def receive = {
+    case get: KvGet => kvReadActor forward get
+    case put: KvPut => kvWriteActor forward put
+    case ShutdownCommand => waitForActorsAndShutdown(NonEmptyList.one(kvWriteActor))
   }
 }

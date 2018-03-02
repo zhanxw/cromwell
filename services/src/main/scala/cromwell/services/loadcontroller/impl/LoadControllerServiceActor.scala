@@ -49,7 +49,7 @@ class LoadControllerServiceActor(serviceConfig: Config,
 
   def updateMetric(metric: LoadMetric): Unit = {
     loadMetrics = loadMetrics + (metric -> metric.loadLevel)
-    sendGauge(NonEmptyList.one(metric.name), loadLevel.level.toLong, LoadInstrumentationPrefix)
+    sendGauge(NonEmptyList.one(metric.name), metric.loadLevel.level.toLong, LoadInstrumentationPrefix)
   }
 
   def checkLoad(): Unit = {

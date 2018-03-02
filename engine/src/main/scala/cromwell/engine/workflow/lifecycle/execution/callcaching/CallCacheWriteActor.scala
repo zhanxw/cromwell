@@ -6,31 +6,20 @@ import cats.instances.list._
 import cats.instances.tuple._
 import cats.syntax.foldable._
 import cromwell.core.Dispatcher.EngineDispatcher
-import cromwell.core.actor.BatchActor
 import cromwell.core.actor.BatchActor._
 import cromwell.core.instrumentation.InstrumentationPrefixes
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCache.CallCacheHashBundle
 import cromwell.engine.workflow.lifecycle.execution.callcaching.CallCacheWriteActor.SaveCallCacheHashes
-import cromwell.services.instrumentation.{CromwellInstrumentationActor, InstrumentedBatchActor}
-import cromwell.services.loadcontroller.LoadControlledBatchActor
+import cromwell.services.EnhancedBatchActor
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
 import scala.language.postfixOps
 
 case class CallCacheWriteActor(callCache: CallCache, serviceRegistryActor: ActorRef, threshold: Int)
-  extends BatchActor[CommandAndReplyTo[SaveCallCacheHashes]](CallCacheWriteActor.dbFlushRate, CallCacheWriteActor.dbBatchSize)
-    with InstrumentedBatchActor[CommandAndReplyTo[SaveCallCacheHashes]]
-    with LoadControlledBatchActor[CallCacheWriteQueueMetric, CommandAndReplyTo[SaveCallCacheHashes]]
-    with CromwellInstrumentationActor {
-
-  def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[SaveCallCacheHashes]] = {
-    case command: SaveCallCacheHashes => CommandAndReplyTo(command, snd)
-  }
-
-  override def metricClass = classOf[CallCacheWriteQueueMetric]
-
-  override protected def weightFunction(command: CommandAndReplyTo[SaveCallCacheHashes]) = 1
+  extends EnhancedBatchActor[CommandAndReplyTo[SaveCallCacheHashes]](
+    CallCacheWriteActor.dbFlushRate,
+    CallCacheWriteActor.dbBatchSize) {
 
   override protected def process(data: NonEmptyVector[CommandAndReplyTo[SaveCallCacheHashes]]) = instrumentedProcess {
     log.debug("Flushing {} call cache hashes sets to the DB", data.length)
@@ -47,10 +36,14 @@ case class CallCacheWriteActor(callCache: CallCache, serviceRegistryActor: Actor
     } else Future.successful(0)
   }
 
+  // EnhancedBatchActor overrides
   override def receive = instrumentationReceive.orElse(super.receive)
-
+  override protected def weightFunction(command: CommandAndReplyTo[SaveCallCacheHashes]) = 1
   override protected def instrumentationPath = NonEmptyList.of("callcaching", "write")
   override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
+  def commandToData(snd: ActorRef): PartialFunction[Any, CommandAndReplyTo[SaveCallCacheHashes]] = {
+    case command: SaveCallCacheHashes => CommandAndReplyTo(command, snd)
+  }
 }
 
 object CallCacheWriteActor {

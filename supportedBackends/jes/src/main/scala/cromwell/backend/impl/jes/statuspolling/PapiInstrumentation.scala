@@ -4,8 +4,8 @@ import akka.actor.Actor
 import cats.data.NonEmptyList
 import cromwell.backend.impl.jes.statuspolling.JesApiQueryManager.{JesApiQueryFailed, JesRunCreationQuery, JesStatusPollQuery}
 import cromwell.backend.impl.jes.statuspolling.PapiInstrumentation._
-import cromwell.backend.instrumentation.BackendInstrumentation._
 import cromwell.core.instrumentation.InstrumentationKeys._
+import cromwell.core.instrumentation.InstrumentationPrefixes._
 import cromwell.filesystems.gcs.GoogleUtil
 import cromwell.services.instrumentation.CromwellInstrumentation._
 import cromwell.services.instrumentation.CromwellInstrumentationActor

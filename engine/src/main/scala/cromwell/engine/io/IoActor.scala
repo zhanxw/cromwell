@@ -20,7 +20,7 @@ import cromwell.engine.io.gcs.GcsBatchFlow.BatchFailedException
 import cromwell.engine.io.gcs.{GcsBatchCommandContext, ParallelGcsBatchFlow}
 import cromwell.engine.io.nio.NioFlow
 import cromwell.filesystems.gcs.batch.GcsBatchIoCommand
-import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadLevel, LoadMetric, NormalLoad}
+import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadMetric, NormalLoad}
 
 import scala.concurrent.duration._
 
@@ -102,7 +102,7 @@ final class IoActor(queueSize: Int,
 
   override def onBackpressure() = {
     incrementBackpressure()
-    serviceRegistryActor ! IoMetric(HighLoad)
+    serviceRegistryActor ! LoadMetric("IO", HighLoad)
     // Because this method will be called every time we backpressure, the timer will be overridden every
     // time until we're not backpressuring anymore
     timers.startSingleTimer(BackPressureTimerResetKey, BackPressureTimerResetAction, 10.seconds)
@@ -132,7 +132,7 @@ final class IoActor(queueSize: Int,
       val replyTo = sender()
       val commandContext= DefaultCommandContext(command, replyTo)
       sendToStream(commandContext)
-    case BackPressureTimerResetAction => serviceRegistryActor ! IoMetric(NormalLoad)
+    case BackPressureTimerResetAction => serviceRegistryActor ! LoadMetric("IO", NormalLoad)
   }
 }
 
@@ -161,9 +161,6 @@ object IoActor {
   
   case object BackPressureTimerResetKey
   case object BackPressureTimerResetAction
-  case class IoMetric(loadLevel: LoadLevel) extends LoadMetric {
-    override val name = "io"
-  }
 
   /**
     * ATTENTION: Transient failures are retried *forever* 
