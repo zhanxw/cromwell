@@ -24,7 +24,7 @@ class CallCacheReadActor(cache: CallCache,
                          override val threshold: Int)
   extends EnhancedThrottlerActor[CommandAndReplyTo[CallCacheReadActorRequest]]
     with ActorLogging {
-
+  override def routed = true
   override def processHead(request: CommandAndReplyTo[CallCacheReadActorRequest]): Future[Int] = instrumentedProcess {
     val response = request.command match {
       case HasMatchingInitialHashLookup(initialHash) =>
@@ -68,7 +68,7 @@ class CallCacheReadActor(cache: CallCache,
 }
 
 object CallCacheReadActor {
-  val QueueThreshold = 1 * 1000 * 1000
+  val QueueThreshold = 10 * 1000
   def props(callCache: CallCache, serviceRegistryActor: ActorRef): Props = {
     Props(new CallCacheReadActor(callCache, serviceRegistryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
   }

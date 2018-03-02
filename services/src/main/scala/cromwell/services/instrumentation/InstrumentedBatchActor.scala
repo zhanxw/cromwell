@@ -19,8 +19,15 @@ trait InstrumentedBatchActor[C] { this: BatchActor[C] with CromwellInstrumentati
   protected def instrumentationPath: NonEmptyList[String]
   protected def instrumentationPrefix: Option[String]
 
-  private val processedPath = instrumentationPath.::("processed")
-  private val queueSizePath = instrumentationPath.::("queue")
+  private val processedPath = if (routed)
+    instrumentationPath.concat(NonEmptyList.of(self.path.name, "processed"))
+  else
+    instrumentationPath.concat(NonEmptyList.one("processed"))
+
+  private val queueSizePath = if (routed)
+    instrumentationPath.concat(NonEmptyList.of(self.path.name, "queue"))
+  else
+    instrumentationPath.concat(NonEmptyList.one("queue"))
 
   timers.startPeriodicTimer(QueueSizeTimerKey, QueueSizeTimerAction, CromwellInstrumentation.InstrumentationRate)
 

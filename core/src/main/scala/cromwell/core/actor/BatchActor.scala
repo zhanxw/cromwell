@@ -51,6 +51,7 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
   private val name = self.path.name
   
   protected def logOnStartUp: Boolean = true
+  protected def routed: Boolean = false
 
   override def preStart(): Unit = {
     if (logOnStartUp) log.info("{} configured to flush with batch size {} and process rate {}.", name, batchSize, flushRate)
