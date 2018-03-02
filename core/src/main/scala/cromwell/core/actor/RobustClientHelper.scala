@@ -23,14 +23,12 @@ trait RobustClientHelper { this: Actor with ActorLogging =>
 
   protected def backpressureTimeout: FiniteDuration = 10 seconds
   protected def backpressureRandomizerFactor: Double = 0.5D
-  protected def onBackpressure(): Unit = {}
 
   def robustReceive: Receive = {
     case BackPressure(request) =>
       val snd = sender()
       newTimer(request, snd, generateBackpressureTime)
       resetTimeout(request, snd)
-      onBackpressure()
       ()
     case RequestTimeout(request, to) => onTimeout(request, to)
   }

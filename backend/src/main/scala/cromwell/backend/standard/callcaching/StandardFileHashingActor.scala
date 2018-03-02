@@ -11,10 +11,8 @@ import cromwell.core.JobKey
 import cromwell.core.callcaching._
 import cromwell.core.io._
 import cromwell.core.logging.JobLogging
-import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadLevel, LoadMetric, NormalLoad}
 import wom.values.WomFile
 
-import scala.concurrent.duration._
 import scala.util.{Failure, Success, Try}
 
 /**
@@ -56,11 +54,6 @@ object StandardFileHashingActor {
 
   sealed trait BackendSpecificHasherResponse extends SuccessfulHashResultMessage
   case class FileHashResponse(hashResult: HashResult) extends BackendSpecificHasherResponse { override def hashes = Set(hashResult) }
-  case class FileHashingMetric(loadLevel: LoadLevel) extends LoadMetric {
-    override val name = "fileHashing"
-  }
-  case object BackPressureTimerResetKey
-  case object BackPressureTimerResetAction
 }
 
 abstract class StandardFileHashingActor(standardParams: StandardFileHashingActorParams)
@@ -78,19 +71,8 @@ abstract class StandardFileHashingActor(standardParams: StandardFileHashingActor
 
   protected def ioCommandBuilder: IoCommandBuilder = DefaultIoCommandBuilder
 
-  override def onBackpressure() = {
-    serviceRegistryActor ! FileHashingMetric(HighLoad)
-    // Because this method will be called every time we get backpressured, the timer will be overridden every
-    // time until we're not backpressured anymore
-    timers.startSingleTimer(BackPressureTimerResetKey, BackPressureTimerResetAction, 30.seconds)
-  }
-
   def customHashStrategy(fileRequest: SingleFileHashRequest): Option[Try[String]] = None
   
-  def backPressureResetReceive: Receive = {
-    case BackPressureTimerResetAction => serviceRegistryActor ! FileHashingMetric(NormalLoad)
-  }
-
   def fileHashingReceive: Receive = {
     // Hash Request
     case fileRequest: SingleFileHashRequest =>
@@ -125,7 +107,7 @@ abstract class StandardFileHashingActor(standardParams: StandardFileHashingActor
     }
   }
 
-  override def receive: Receive = ioReceive orElse backPressureResetReceive orElse fileHashingReceive 
+  override def receive: Receive = ioReceive orElse fileHashingReceive 
 
   override protected def onTimeout(message: Any, to: ActorRef): Unit = {
     message match {

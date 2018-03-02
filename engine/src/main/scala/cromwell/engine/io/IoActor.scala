@@ -4,7 +4,7 @@ import java.net.{SocketException, SocketTimeoutException}
 import javax.net.ssl.SSLException
 
 import akka.NotUsed
-import akka.actor.{Actor, ActorLogging, ActorRef, Props}
+import akka.actor.{Actor, ActorLogging, ActorRef, Props, Timers}
 import akka.stream._
 import akka.stream.scaladsl.{Flow, GraphDSL, Merge, Partition, Sink, Source}
 import com.google.cloud.storage.StorageException
@@ -20,6 +20,9 @@ import cromwell.engine.io.gcs.GcsBatchFlow.BatchFailedException
 import cromwell.engine.io.gcs.{GcsBatchCommandContext, ParallelGcsBatchFlow}
 import cromwell.engine.io.nio.NioFlow
 import cromwell.filesystems.gcs.batch.GcsBatchIoCommand
+import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadLevel, LoadMetric, NormalLoad}
+
+import scala.concurrent.duration._
 
 /**
   * Actor that performs IO operations asynchronously using akka streams
@@ -33,7 +36,7 @@ import cromwell.filesystems.gcs.batch.GcsBatchIoCommand
 final class IoActor(queueSize: Int,
                     throttle: Option[Throttle],
                     override val serviceRegistryActor: ActorRef)(implicit val materializer: ActorMaterializer) 
-  extends Actor with ActorLogging with StreamActorHelper[IoCommandContext[_]] with IoInstrumentation {
+  extends Actor with ActorLogging with StreamActorHelper[IoCommandContext[_]] with IoInstrumentation with Timers {
   
   implicit private val system = context.system
   implicit val ec = context.dispatcher
@@ -99,6 +102,10 @@ final class IoActor(queueSize: Int,
 
   override def onBackpressure() = {
     incrementBackpressure()
+    serviceRegistryActor ! IoMetric(HighLoad)
+    // Because this method will be called every time we backpressure, the timer will be overridden every
+    // time until we're not backpressuring anymore
+    timers.startSingleTimer(BackPressureTimerResetKey, BackPressureTimerResetAction, 10.seconds)
   }
   
   override def actorReceive: Receive = {
@@ -125,6 +132,7 @@ final class IoActor(queueSize: Int,
       val replyTo = sender()
       val commandContext= DefaultCommandContext(command, replyTo)
       sendToStream(commandContext)
+    case BackPressureTimerResetAction => serviceRegistryActor ! IoMetric(NormalLoad)
   }
 }
 
@@ -150,6 +158,12 @@ object IoActor {
   val MaxAttemptsNumber = ioConfig.getOrElse[Int]("number-of-attempts", 5)
 
   case class DefaultCommandContext[T](request: IoCommand[T], replyTo: ActorRef, override val clientContext: Option[Any] = None) extends IoCommandContext[T]
+  
+  case object BackPressureTimerResetKey
+  case object BackPressureTimerResetAction
+  case class IoMetric(loadLevel: LoadLevel) extends LoadMetric {
+    override val name = "io"
+  }
 
   /**
     * ATTENTION: Transient failures are retried *forever* 
