@@ -3,6 +3,7 @@ package cromwell.backend.impl.jes.statuspolling
 import java.io.IOException
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Terminated, Timers}
+import akka.dispatch.ControlMessage
 import cats.data.NonEmptyList
 import com.google.api.client.googleapis.json.GoogleJsonError
 import com.google.api.client.http.{HttpHeaders, HttpRequest}
@@ -16,6 +17,7 @@ import cromwell.core.Dispatcher.BackendDispatcher
 import cromwell.core.retry.{Backoff, SimpleExponentialBackoff}
 import cromwell.core.{CromwellFatalExceptionMarker, WorkflowId}
 import cromwell.services.instrumentation.CromwellInstrumentationScheduler
+import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadMetric, NormalLoad}
 import cromwell.util.StopAndLogSupervisor
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.numeric._
@@ -80,8 +82,22 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   protected[statuspolling] var statusPoller: ActorRef = _
 
   resetWorker()
+  
+  def monitorQueueSize() = {
+    if (workQueue.size > JesApiQueryManager.QueueThreshold) 
+      serviceRegistryActor ! LoadMetric("PAPIQueryManager", HighLoad)
+    else
+      serviceRegistryActor ! LoadMetric("PAPIQueryManager", NormalLoad)
+    timers.startSingleTimer(QueueMonitoringTimerKey, QueueMonitoringTimerAction, 10.seconds)
+  }
+
+  override def preStart() = {
+    timers.startSingleTimer(QueueMonitoringTimerKey, QueueMonitoringTimerAction, 10.seconds)
+    super.preStart()
+  }
 
   override def receive = {
+    case QueueMonitoringTimerAction => monitorQueueSize()
     case BackendSingletonActorAbortWorkflow(id) => abort(id)
     case DoPoll(workflowId, run) => workQueue :+= makePollQuery(workflowId, sender, run)
     case DoCreateRun(workflowId, genomics, rpr) =>
@@ -204,7 +220,9 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
 }
 
 object JesApiQueryManager {
-
+  val QueueThreshold = 5000
+  case object QueueMonitoringTimerKey
+  case object QueueMonitoringTimerAction extends ControlMessage
   def props(qps: Int Refined Positive, serviceRegistryActor: ActorRef): Props = Props(new JesApiQueryManager(qps, serviceRegistryActor)).withDispatcher(BackendDispatcher)
 
   sealed trait JesApiQueryManagerRequest

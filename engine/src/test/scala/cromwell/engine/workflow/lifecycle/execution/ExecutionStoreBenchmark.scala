@@ -61,7 +61,7 @@ object ExecutionStoreBenchmark extends Bench[Double] with DefaultJsonProtocol {
     // Other "shapes" would be valuable to get a better sense of how this method behaves in various situations (with Collector Keys etc...)  
     measure method "runnableCalls" in {
       using(executionStores) in { es =>
-        es.update
+        es.update(true)
       }
     }
   }

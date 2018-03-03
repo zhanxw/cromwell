@@ -49,6 +49,12 @@ final class IoActor(queueSize: Int,
     incrementIoRetry(commandContext.request, throwable)
   }
   
+  override def preStart() = {
+    // On start up, let the controller know that the load is normal
+    serviceRegistryActor ! LoadMetric("IO", NormalLoad)
+    super.preStart()
+  }
+  
   private [io] lazy val defaultFlow = new NioFlow(parallelism = 100, context.system.scheduler, onRetry).flow.withAttributes(ActorAttributes.dispatcher(Dispatcher.IoDispatcher))
   private [io] lazy val gcsBatchFlow = new ParallelGcsBatchFlow(parallelism = 10, batchSize = 100, context.system.scheduler, onRetry).flow.withAttributes(ActorAttributes.dispatcher(Dispatcher.IoDispatcher))
   
