@@ -149,7 +149,7 @@ case class WorkflowExecutionActor(params: WorkflowExecutionActorParams)
   // Most of the Event handling is common to all states, so put it here. Specific behavior is added / overridden in each state
   whenUnhandled {
     case Event(ExecutionHeartBeat, data) if data.executionStore.needsUpdate =>
-      val newData = startRunnableNodes(data, data.executionStore.queuedJobs < 500)
+      val newData = startRunnableNodes(data)
       sendHeartBeat()
       stay() using newData
     case Event(ExecutionHeartBeat, _) =>
@@ -412,10 +412,10 @@ case class WorkflowExecutionActor(params: WorkflowExecutionActorParams)
     * Attempt to start all runnable jobs and return updated state data. This will create a new copy
     * of the state data.
     */
-  private def startRunnableNodes(data: WorkflowExecutionActorData, withCallNodes: Boolean): WorkflowExecutionActorData = {
+  private def startRunnableNodes(data: WorkflowExecutionActorData): WorkflowExecutionActorData = {
     import keys._
 
-    val DataStoreUpdate(runnableKeys, updatedData) = data.executionStoreUpdate(withCallNodes)
+    val DataStoreUpdate(runnableKeys, updatedData) = data.executionStoreUpdate
     val runnableCalls = runnableKeys.view
       .collect({ case k: BackendJobDescriptorKey => k })
       .groupBy(_.node)

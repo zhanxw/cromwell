@@ -24,7 +24,7 @@ class JesPollingActor(val pollingManager: ActorRef, val qps: Int Refined Positiv
   with StatusPolling with RunCreation with CromwellInstrumentationActor {
   // The interval to delay between submitting each batch
   lazy val batchInterval = determineBatchInterval(qps)
-  log.debug("JES batch polling interval is {}", batchInterval)
+  log.info("JES batch polling interval is {}", batchInterval)
 
   self ! NoWorkToDo // Starts the check-for-work cycle when the actor is fully initialized.
 

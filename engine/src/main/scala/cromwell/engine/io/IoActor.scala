@@ -55,7 +55,7 @@ final class IoActor(queueSize: Int,
     super.preStart()
   }
   
-  private [io] lazy val defaultFlow = new NioFlow(parallelism = 100, context.system.scheduler, onRetry).flow.withAttributes(ActorAttributes.dispatcher(Dispatcher.IoDispatcher))
+  private [io] lazy val defaultFlow = new NioFlow(parallelism = 10, context.system.scheduler, onRetry).flow.withAttributes(ActorAttributes.dispatcher(Dispatcher.IoDispatcher))
   private [io] lazy val gcsBatchFlow = new ParallelGcsBatchFlow(parallelism = 10, batchSize = 100, context.system.scheduler, onRetry).flow.withAttributes(ActorAttributes.dispatcher(Dispatcher.IoDispatcher))
   
   protected val source = Source.queue[IoCommandContext[_]](queueSize, OverflowStrategy.dropNew)

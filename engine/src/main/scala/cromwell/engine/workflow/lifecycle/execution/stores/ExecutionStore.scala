@@ -104,8 +104,8 @@ final case class ActiveExecutionStore private[stores](private val statusStore: M
     this.copy(statusStore = statusStore ++ values, needsUpdate = needsUpdate)
   }
   override def seal: SealedExecutionStore = SealedExecutionStore(statusStore.filterNot(_._2 == NotStarted), needsUpdate)
-  override def withNeedsUpdateFalse: ExecutionStore = this.copy(needsUpdate = false)
-  override def withNeedsUpdateTrue: ExecutionStore = this.copy(needsUpdate = true)
+  override def withNeedsUpdateFalse: ExecutionStore = if (!needsUpdate) this else this.copy(needsUpdate = false)
+  override def withNeedsUpdateTrue: ExecutionStore = if (needsUpdate) this else this.copy(needsUpdate = true)
 }
 
 /**
@@ -143,7 +143,7 @@ sealed abstract class ExecutionStore private[stores](statusStore: Map[JobKey, Ex
   /**
     * Number of queued jobs
     */
-  def queuedJobs = store.get(ExecutionStatus.QueuedInCromwell).map(_.length).getOrElse(0)
+  lazy val queuedJobs = store.get(ExecutionStatus.QueuedInCromwell).map(_.length).getOrElse(0)
 
   /**
     * Update key statuses and needsUpdate
@@ -229,9 +229,10 @@ sealed abstract class ExecutionStore private[stores](statusStore: Map[JobKey, Ex
     * 
     * This method can expansive to run for very large workflows if needsUpdate is true.
     */
-  def update(withCallNodes: Boolean): ExecutionStoreUpdate = if (needsUpdate) {
+  def update: ExecutionStoreUpdate = if (needsUpdate) {
     // When looking for runnable keys, keep track of the ones that are unstartable so we can mark them as such
     var unstartables = Map.empty[JobKey, ExecutionStatus]
+    val runCallNodes = queuedJobs < 500
     
     def filterFunction(key: JobKey) = {
       // A key is runnable if all its dependencies are Done
@@ -248,7 +249,7 @@ sealed abstract class ExecutionStore private[stores](statusStore: Map[JobKey, Ex
 
     // filter the keys that are runnable. In the process remember the ones that are unreachable
     val readyToStart = keysWithStatus(NotStarted).toStream.filter({
-      case _: CallKey if !withCallNodes => false
+      case _: CallKey if !runCallNodes => false
       case key => filterFunction(key)
     })
 
@@ -262,7 +263,7 @@ sealed abstract class ExecutionStore private[stores](statusStore: Map[JobKey, Ex
     val updated = if (unstartables.nonEmpty) {
       updateKeys(unstartables, needsUpdate = true)
     // If the list was truncated, set needsUpdate to true because we'll need to do this again to get the truncated keys
-    } else if (truncated || !withCallNodes) {
+    } else if (truncated || !runCallNodes) {
       withNeedsUpdateTrue
     // Otherwise we can reset it, nothing else will be runnable / unstartable until some new keys become terminal
     } else withNeedsUpdateFalse
