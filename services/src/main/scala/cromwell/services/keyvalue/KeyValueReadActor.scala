@@ -25,7 +25,7 @@ abstract class KeyValueReadActor(override val threshold: Int, override val servi
   
   def processGet(get: KvGet): Future[KvResponse]
 
-  override protected lazy val instrumentationPath = NonEmptyList.one("read").concat(KeyValueServiceActor.InstrumentationPath)
+  override protected lazy val instrumentationPath = KeyValueServiceActor.InstrumentationPath.concat(NonEmptyList.one("read"))
   override protected lazy val instrumentationPrefix = InstrumentationPrefixes.ServicesPrefix
   override def commandToData(snd: ActorRef) = {
     case get: KvGet => CommandAndReplyTo(get, snd)
