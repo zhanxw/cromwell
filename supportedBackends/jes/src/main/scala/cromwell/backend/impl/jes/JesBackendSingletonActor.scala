@@ -11,7 +11,7 @@ import eu.timepit.refined.numeric.Positive
 
 final case class JesBackendSingletonActor(qps: Int Refined Positive, serviceRegistryActor: ActorRef) extends Actor with ActorLogging {
 
-  val jesApiQueryManager = context.actorOf(JesApiQueryManager.props(qps, serviceRegistryActor).withMailbox(Mailbox.PriorityMailbox))
+  val jesApiQueryManager = context.actorOf(JesApiQueryManager.props(qps, serviceRegistryActor).withMailbox(Mailbox.PriorityMailbox), "PAPIQueryManager")
 
   override def receive = {
     case abort: BackendSingletonActorAbortWorkflow => jesApiQueryManager.forward(abort)

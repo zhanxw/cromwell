@@ -212,11 +212,11 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   private def resetWorker() = {
     statusPoller = makeWorkerActor()
     context.watch(statusPoller)
-    log.info(s"watching $statusPoller")
+    log.debug(s"watching $statusPoller")
   }
 
   // Separate method to allow overriding in tests:
-  private[statuspolling] def makeWorkerActor(): ActorRef = context.actorOf(statusPollerProps)
+  private[statuspolling] def makeWorkerActor(): ActorRef = context.actorOf(statusPollerProps, "PAPIQueryWorker")
 }
 
 object JesApiQueryManager {

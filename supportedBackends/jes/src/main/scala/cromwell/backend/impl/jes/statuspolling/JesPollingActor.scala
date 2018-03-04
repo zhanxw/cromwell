@@ -107,13 +107,10 @@ object JesPollingActor {
     * Given the Genomics API queries per 100 seconds and given MaxBatchSize will determine a batch interval which
     * is at 90% of the quota. The (still crude) delta is to provide some room at the edges for things like new
     * calls, etc.
-    *
-    * Forcing the minimum value to be 1 second, for now it seems unlikely to matter and it makes testing a bit
-    * easier
     */
   def determineBatchInterval(qps: Int Refined Positive): FiniteDuration = {
-    val maxInterval = MaxBatchSize / qps.value
-    val interval = Math.max(maxInterval / 0.9, 1).toInt
-    interval.seconds
+    val maxInterval = MaxBatchSize.toDouble / qps.value.toDouble
+    val interval = ((maxInterval / 0.9) * 1000).toInt
+    interval.milliseconds
   }
 }

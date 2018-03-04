@@ -115,7 +115,7 @@ abstract class CromwellRootActor(gracefulShutdown: Boolean, abortJobsOnTerminate
     dockerConf.cacheEntryTtl, dockerConf.cacheSize)(materializer), "DockerHashActor")
 
   lazy val backendSingletons = CromwellBackends.instance.get.backendLifecycleActorFactories map {
-    case (name, factory) => name -> (factory.backendSingletonActorProps(serviceRegistryActor) map context.actorOf)
+    case (name, factory) => name -> (factory.backendSingletonActorProps(serviceRegistryActor) map { context.actorOf(_, s"$name-Singleton") })
   }
   lazy val backendSingletonCollection = BackendSingletonCollection(backendSingletons)
 
