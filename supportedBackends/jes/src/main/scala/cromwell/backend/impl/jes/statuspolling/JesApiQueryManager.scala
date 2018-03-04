@@ -1,6 +1,7 @@
 package cromwell.backend.impl.jes.statuspolling
 
 import java.io.IOException
+import java.util.UUID
 
 import akka.actor.{Actor, ActorLogging, ActorRef, Props, Terminated, Timers}
 import akka.dispatch.ControlMessage
@@ -19,6 +20,7 @@ import cromwell.core.{CromwellFatalExceptionMarker, WorkflowId}
 import cromwell.services.instrumentation.CromwellInstrumentationScheduler
 import cromwell.services.loadcontroller.LoadControllerService.{HighLoad, LoadMetric, NormalLoad}
 import cromwell.util.StopAndLogSupervisor
+import eu.timepit.refined._
 import eu.timepit.refined.api.Refined
 import eu.timepit.refined.numeric._
 
@@ -28,7 +30,7 @@ import scala.concurrent.duration._
 /**
   * Holds a set of JES API requests until a JesQueryActor pulls the work.
   */
-class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegistryActor: ActorRef) extends Actor 
+class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegistryActor: ActorRef) extends Actor
   with ActorLogging with StopAndLogSupervisor with PapiInstrumentation with CromwellInstrumentationScheduler with Timers {
 
   private val maxRetries = 10
@@ -67,6 +69,10 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
       "and localize the files yourself."
   ))
 
+  private[statuspolling] lazy val nbWorkers = 5
+  private lazy val workerQps = refineV[Positive](Math.max(qps.value / nbWorkers, 1))
+    .getOrElse(throw new IllegalArgumentException("Programmer error ! Keep the min qps at 1 !"))
+
   scheduleInstrumentation { updateQueueSize(workQueue.size) }
 
   // workQueue is protected for the unit tests, not intended to be generally overridden
@@ -76,15 +82,13 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   // the scheduled delay, unless the workflow is aborted in the meantime in which case they will be cancelled.
   private var queriesWaitingForRetry: Set[JesApiQuery] = Set.empty[JesApiQuery]
 
-  private def statusPollerProps = JesPollingActor.props(self, qps, serviceRegistryActor)
+  private def statusPollerProps = JesPollingActor.props(self, workerQps, serviceRegistryActor)
 
   // statusPoller is protected for the unit tests, not intended to be generally overridden
-  protected[statuspolling] var statusPoller: ActorRef = _
+  protected[statuspolling] val statusPollers: Array[ActorRef] = resetAllWorkers()
 
-  resetWorker()
-  
   def monitorQueueSize() = {
-    if (workQueue.size > JesApiQueryManager.QueueThreshold) 
+    if (workQueue.size > JesApiQueryManager.QueueThreshold)
       serviceRegistryActor ! LoadMetric("PAPIQueryManager", HighLoad)
     else
       serviceRegistryActor ! LoadMetric("PAPIQueryManager", NormalLoad)
@@ -114,7 +118,7 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
     case Terminated(actorRef) => onFailure(actorRef, new RuntimeException("Polling stopped itself unexpectedly"))
     case other => log.error(s"Unexpected message to JesPollingManager: $other")
   }
-  
+
   private def abort(workflowId: WorkflowId) = {
     def aborted(query: JesApiQuery) = query match {
       case creation: JesRunCreationQuery => creation.requester ! JesApiRunCreationQueryFailed(creation, JobAbortedException)
@@ -179,7 +183,7 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   private def beheadWorkQueue(maxBatchSize: Int): BeheadedWorkQueue = {
     import common.collections.EnhancedCollections._
     val DeQueued(head, tail) = workQueue.takeWhileWeighted(maxBatchRequestSize, _.contentLength, Option(maxBatchSize), strict = true)
-    
+
     head.toList match {
       case h :: t => BeheadedWorkQueue(Option(NonEmptyList(h, t)), tail)
       case Nil => BeheadedWorkQueue(None, Queue.empty)
@@ -206,17 +210,21 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
         log.error(throwable, s"The JES API worker actor managed to unexpectedly terminate whilst doing absolutely nothing (${throwable.getMessage}). This is probably a programming error. Making a new one...")
     }
 
-    resetWorker()
+    resetWorker(terminee)
   }
 
-  private def resetWorker() = {
-    statusPoller = makeWorkerActor()
-    context.watch(statusPoller)
-    log.debug(s"watching $statusPoller")
+  private def resetWorker(worker: ActorRef) = {
+    statusPollers.update(statusPollers.indexOf(worker), makeWorkerActor())
+  }
+
+  private[statuspolling] def resetAllWorkers(): Array[ActorRef] = {
+    val pollers = Array.fill(nbWorkers) { makeWorkerActor() }
+    pollers.foreach(context.watch)
+    pollers
   }
 
   // Separate method to allow overriding in tests:
-  private[statuspolling] def makeWorkerActor(): ActorRef = context.actorOf(statusPollerProps, "PAPIQueryWorker")
+  private[statuspolling] def makeWorkerActor(): ActorRef = context.actorOf(statusPollerProps, s"PAPIQueryWorker-${UUID.randomUUID()}")
 }
 
 object JesApiQueryManager {
