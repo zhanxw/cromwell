@@ -9,7 +9,7 @@ import scala.concurrent.duration._
 object SqlKeyValueServiceActor {
   def props(serviceConfig: Config, globalConfig: Config, serviceRegistryActor: ActorRef) = Props(SqlKeyValueServiceActor(serviceConfig, globalConfig, serviceRegistryActor)).withDispatcher(ServiceDispatcher)
   val WriteQueueThreshold = 10 * 1000
-  val ReadQueueThreshold = 1 * 1000
+  val ReadQueueThreshold = 10 * 1000
 }
 
 final case class SqlKeyValueServiceActor(serviceConfig: Config, globalConfig: Config, serviceRegistryActor: ActorRef)

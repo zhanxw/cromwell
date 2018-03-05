@@ -21,7 +21,7 @@ import scala.util.{Failure, Success, Try}
   * Sends batched requests to JES as a worker to the JesApiQueryManager
   */
 class JesPollingActor(val pollingManager: ActorRef, val qps: Int Refined Positive, override val serviceRegistryActor: ActorRef) extends Actor with ActorLogging
-  with StatusPolling with RunCreation with CromwellInstrumentationActor {
+  with StatusPolling with RunCreation with RunAbort with CromwellInstrumentationActor {
   // The interval to delay between submitting each batch
   lazy val batchInterval = determineBatchInterval(qps)
   log.info("JES batch polling interval is {}", batchInterval)
@@ -49,6 +49,7 @@ class JesPollingActor(val pollingManager: ActorRef, val qps: Int Refined Positiv
     val batchFutures = workBatch map {
       case pollingRequest: JesStatusPollQuery => enqueueStatusPollInBatch(pollingRequest, batch)
       case runCreationRequest: JesRunCreationQuery => enqueueRunCreationInBatch(runCreationRequest, batch)
+      case abortRequest: JesAbortQuery => enqueueAbortInBatch(abortRequest, batch)
 
       // We do the "successful Failure" thing so that the Future.sequence doesn't short-out immediately when the first one fails.
       case other => Future.successful(Failure(new RuntimeException(s"Cannot handle ${other.getClass.getSimpleName} requests")))

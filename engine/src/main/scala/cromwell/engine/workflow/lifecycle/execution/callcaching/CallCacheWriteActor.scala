@@ -51,7 +51,7 @@ object CallCacheWriteActor {
     Props(CallCacheWriteActor(callCache, registryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
   }
 
-  val QueueThreshold = 1 * 1000 * 1000
+  val QueueThreshold = 10 * 1000
 
   case class SaveCallCacheHashes(bundle: CallCacheHashBundle)
 

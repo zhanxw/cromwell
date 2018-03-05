@@ -12,7 +12,7 @@ import scala.util.{Failure, Success}
 
 abstract class KeyValueReadActor(override val threshold: Int, override val serviceRegistryActor: ActorRef)
   extends EnhancedThrottlerActor[CommandAndReplyTo[KvGet]] {
-  override def receive = instrumentationReceive.orElse(super.receive)
+  override def receive = enhancedReceive.orElse(super.receive)
   
   override def processHead(head: CommandAndReplyTo[KvGet]) = instrumentedProcess {
     val processed = processGet(head.command)

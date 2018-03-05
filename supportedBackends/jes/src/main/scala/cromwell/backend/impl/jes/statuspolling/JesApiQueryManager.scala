@@ -69,7 +69,7 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
       "and localize the files yourself."
   ))
 
-  private[statuspolling] lazy val nbWorkers = 5
+  private[statuspolling] lazy val nbWorkers = 2
   private lazy val workerQps = refineV[Positive](Math.max(qps.value / nbWorkers, 1))
     .getOrElse(throw new IllegalArgumentException("Programmer error ! Keep the min qps at 1 !"))
 
@@ -84,14 +84,12 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
 
   private def statusPollerProps = JesPollingActor.props(self, workerQps, serviceRegistryActor)
 
-  // statusPoller is protected for the unit tests, not intended to be generally overridden
+  // statusPollers is protected for the unit tests, not intended to be generally overridden
   protected[statuspolling] val statusPollers: Array[ActorRef] = resetAllWorkers()
 
   def monitorQueueSize() = {
-    if (workQueue.size > JesApiQueryManager.QueueThreshold)
-      serviceRegistryActor ! LoadMetric("PAPIQueryManager", HighLoad)
-    else
-      serviceRegistryActor ! LoadMetric("PAPIQueryManager", NormalLoad)
+    val load = if (workQueue.size > JesApiQueryManager.QueueThreshold) HighLoad else NormalLoad
+    serviceRegistryActor ! LoadMetric("PAPIQueryManager", load)
     timers.startSingleTimer(QueueMonitoringTimerKey, QueueMonitoringTimerAction, 10.seconds)
   }
 
@@ -110,6 +108,8 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
       if (creationQuery.contentLength > maxBatchRequestSize) {
         creationQuery.requester ! JesApiRunCreationQueryFailed(creationQuery, requestTooLargeException)
       } else workQueue :+= creationQuery
+    case DoAbortRun(workflowId, run) =>
+      workQueue :+= makeAbortQuery(workflowId, sender, run)
     case q: JesApiQuery => workQueue :+= q
     case RequestJesPollingWork(maxBatchSize) =>
       log.debug("Request for JES Polling Work received (max batch: {}, current queue size is {})", maxBatchSize, workQueue.size)
@@ -120,20 +120,17 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   }
 
   private def abort(workflowId: WorkflowId) = {
-    def aborted(query: JesApiQuery) = query match {
-      case creation: JesRunCreationQuery => creation.requester ! JesApiRunCreationQueryFailed(creation, JobAbortedException)
-      case poll: JesStatusPollQuery => poll.requester ! JesApiStatusQueryFailed(poll, JobAbortedException)
-    }
+    def aborted(query: JesRunCreationQuery) = query.requester ! JesApiRunCreationQueryFailed(query, JobAbortedException)
 
     workQueue = workQueue.filterNot({
-      case query if query.workflowId == workflowId =>
+      case query: JesRunCreationQuery if query.workflowId == workflowId =>
         aborted(query)
         true
       case _ => false
     })
 
     queriesWaitingForRetry = queriesWaitingForRetry.filterNot({
-      case query if query.workflowId == workflowId =>
+      case query: JesRunCreationQuery if query.workflowId == workflowId =>
         timers.cancel(query)
         queriesWaitingForRetry = queriesWaitingForRetry - query
         aborted(query)
@@ -148,6 +145,10 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
 
   private [statuspolling] def makePollQuery(workflowId: WorkflowId, replyTo: ActorRef, run: Run) = {
     JesStatusPollQuery(workflowId, replyTo, run)
+  }
+
+  private [statuspolling] def makeAbortQuery(workflowId: WorkflowId, replyTo: ActorRef, run: Run) = {
+    JesAbortQuery(workflowId, replyTo, run)
   }
 
   private def handleQueryFailure(failure: JesApiQueryFailed) = if (failure.query.failedAttempts < maxRetries) {
@@ -202,6 +203,8 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
             self ! JesApiStatusQueryFailed(statusQuery, new JesApiException(throwable))
           case runCreationQuery: JesRunCreationQuery =>
             self ! JesApiRunCreationQueryFailed(runCreationQuery, new JesApiException(throwable))
+          case abortQuery: JesAbortQuery =>
+            self ! JesApiAbortQueryFailed(abortQuery, new JesApiException(throwable))
         }
       case None =>
         // It managed to die while doing absolutely nothing...!?
@@ -219,12 +222,15 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
 
   private[statuspolling] def resetAllWorkers(): Array[ActorRef] = {
     val pollers = Array.fill(nbWorkers) { makeWorkerActor() }
-    pollers.foreach(context.watch)
     pollers
   }
 
   // Separate method to allow overriding in tests:
-  private[statuspolling] def makeWorkerActor(): ActorRef = context.actorOf(statusPollerProps, s"PAPIQueryWorker-${UUID.randomUUID()}")
+  private[statuspolling] def makeWorkerActor(): ActorRef = {
+    val newWorker = context.actorOf(statusPollerProps, s"PAPIQueryWorker-${UUID.randomUUID()}")
+    context.watch(newWorker)
+    newWorker
+  }
 }
 
 object JesApiQueryManager {
@@ -245,7 +251,12 @@ object JesApiQueryManager {
     */
   final case class DoCreateRun(workflowId: WorkflowId, genomicsInterface: Genomics, rpr: RunPipelineRequest) extends JesApiQueryManagerRequest
 
-  private[statuspolling] trait JesApiQuery {
+  /**
+    * Abort a pipeline.
+    */
+  final case class DoAbortRun(workflowId: WorkflowId, run: Run) extends JesApiQueryManagerRequest
+
+  private[statuspolling] sealed trait JesApiQuery {
     def workflowId: WorkflowId
     val failedAttempts: Int
     def requester: ActorRef
@@ -271,13 +282,20 @@ object JesApiQueryManager {
     override lazy val httpRequest = genomicsInterface.pipelines().run(rpr).buildHttpRequest()
   }
 
-  trait JesApiQueryFailed {
+  private[statuspolling] case class JesAbortQuery(workflowId: WorkflowId, requester: ActorRef, run: Run, failedAttempts: Int = 0, backoff: Backoff = JesApiQuery.backoff) extends JesApiQuery {
+    override def withFailedAttempt = this.copy(failedAttempts = failedAttempts + 1, backoff = backoff.next)
+    override val genomicsInterface = run.genomicsInterface
+    override lazy val httpRequest = run.abortRequest()
+  }
+
+  sealed trait JesApiQueryFailed {
     val query: JesApiQuery
     val cause: JesApiException
   }
 
   final case class JesApiStatusQueryFailed(query: JesApiQuery, cause: JesApiException) extends JesApiQueryFailed
   final case class JesApiRunCreationQueryFailed(query: JesApiQuery, cause: JesApiException) extends JesApiQueryFailed
+  final case class JesApiAbortQueryFailed(query: JesApiQuery, cause: JesApiException) extends JesApiQueryFailed
 
   private[statuspolling] final case class JesPollingWorkBatch(workBatch: NonEmptyList[JesApiQuery])
   private[statuspolling] case object NoWorkToDo

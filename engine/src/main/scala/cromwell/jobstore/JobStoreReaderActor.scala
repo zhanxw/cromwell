@@ -11,7 +11,7 @@ import cromwell.services.EnhancedThrottlerActor
 import scala.util.{Failure, Success}
 
 object JobStoreReaderActor {
-  val QueueThreshold = 1 * 1000 * 1000
+  val QueueThreshold = 10 * 1000
   def props(database: JobStore, registryActor: ActorRef) = Props(new JobStoreReaderActor(database, registryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
 }
 
@@ -32,7 +32,7 @@ class JobStoreReaderActor(database: JobStore, override val serviceRegistryActor:
   }
 
   // EnhancedBatchActorOverrides
-  override def receive = instrumentationReceive.orElse(super.receive)
+  override def receive = enhancedReceive.orElse(super.receive)
   override protected def instrumentationPath = NonEmptyList.of("store", "read")
   override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
   override def commandToData(snd: ActorRef) = {

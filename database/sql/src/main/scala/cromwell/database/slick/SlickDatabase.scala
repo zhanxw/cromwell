@@ -97,6 +97,11 @@ abstract class SlickDatabase(override val originalDatabaseConfig: Config) extend
     database.run(action.transactionally)
   }
 
+  /*
+    * Upsert the provided values in batch.
+    * Fails the query if one or more upsert failed.
+    * Adapted from https://github.com/slick/slick/issues/1781
+   */
   protected[this] def createBatchUpsert[T](description: String,
                                            compiled: MySQLProfile.JdbcCompiledInsert,
                                            values: Iterable[T]

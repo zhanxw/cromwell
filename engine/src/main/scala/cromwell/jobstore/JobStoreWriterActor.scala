@@ -65,5 +65,5 @@ object JobStoreWriterActor {
             registryActor: ActorRef): Props = {
     Props(new JobStoreWriterActor(jobStoreDatabase, dbBatchSize, dbFlushRate, registryActor, QueueThreshold)).withDispatcher(EngineDispatcher)
   }
-  val QueueThreshold = 1 * 1000 * 1000
+  val QueueThreshold = 10 * 1000
 }

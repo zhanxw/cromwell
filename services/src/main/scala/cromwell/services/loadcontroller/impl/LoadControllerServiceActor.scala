@@ -1,6 +1,6 @@
 package cromwell.services.loadcontroller.impl
 
-import akka.actor.{Actor, ActorLogging, ActorRef, Timers}
+import akka.actor.{Actor, ActorLogging, ActorRef, Terminated, Timers}
 import akka.routing.Listeners
 import cats.data.NonEmptyList
 import com.typesafe.config.Config
@@ -18,10 +18,13 @@ object LoadControllerServiceActor {
   val LoadInstrumentationPrefix = Option("load")
   case object LoadControlTimerKey
   case object LoadControlTimerAction
+  case class ActorAndMetric(actorRef: ActorRef, metricPath: NonEmptyList[String])
 }
 
 /**
-  * Service Actor that monitors load and sends alert to the rest of the system when load is determined abnormal.
+  * Actor that monitors load and sends alert to the rest of the system when load is determined abnormal.
+  * Send a LoadMetric message to the serviceRegistryActor to let this actor know about your current load.
+  * Send a ListenToLoadController message to the serviceRegistryActor to listen to load updates.
   */
 class LoadControllerServiceActor(serviceConfig: Config,
                                  globalConfig: Config,
@@ -30,8 +33,9 @@ class LoadControllerServiceActor(serviceConfig: Config,
   with ActorLogging with Listeners with Timers with CromwellInstrumentation {
   private val controlFrequency = serviceConfig.as[Option[FiniteDuration]]("control-frequency").getOrElse(5.seconds)
 
-  private var loadLevel: LoadLevel = NormalLoad
-  private var loadMetrics: Map[NonEmptyList[String], LoadLevel] = Map.empty
+  private [impl] var loadLevel: LoadLevel = NormalLoad
+  private [impl] var monitoredActors: Set[ActorRef] = Set.empty
+  private [impl] var loadMetrics: Map[ActorAndMetric, LoadLevel] = Map.empty
 
   override def receive = listenerManagement.orElse(controlReceive)
 
@@ -44,15 +48,21 @@ class LoadControllerServiceActor(serviceConfig: Config,
   private val controlReceive: Receive = {
     case metric: LoadMetric => updateMetric(metric)
     case LoadControlTimerAction => checkLoad()
+    case Terminated(terminee) => handleTerminated(terminee)
     case ShutdownCommand => context stop self
   }
 
-  def updateMetric(metric: LoadMetric): Unit = {
-    loadMetrics = loadMetrics + (metric.name -> metric.loadLevel)
+  private def updateMetric(metric: LoadMetric): Unit = {
+    val snd = sender()
+    loadMetrics = loadMetrics + (ActorAndMetric(snd, metric.name) -> metric.loadLevel)
+    if (!monitoredActors.contains(snd)) {
+      context.watch(snd)
+      monitoredActors = monitoredActors + snd
+    }
     sendGauge(metric.name, metric.loadLevel.level.toLong, LoadInstrumentationPrefix)
   }
 
-  def checkLoad(): Unit = {
+  private def checkLoad(): Unit = {
     // Simply take the max level of all load metrics for now
     val newLoadLevel = if (loadMetrics.nonEmpty) loadMetrics.values.max else NormalLoad
     // The load level escalates if the new load is higher than the previous load
@@ -63,5 +73,12 @@ class LoadControllerServiceActor(serviceConfig: Config,
     if (escalates || backToNormal) gossip(newLoadLevel)
     loadLevel = newLoadLevel
     sendGauge(NonEmptyList.one("global"), loadLevel.level.toLong, LoadInstrumentationPrefix)
+  }
+  
+  private def handleTerminated(terminee: ActorRef) = {
+    monitoredActors = monitoredActors - terminee
+    loadMetrics = loadMetrics.filterKeys({
+      case ActorAndMetric(actor, _) => actor != terminee
+    })
   }
 }

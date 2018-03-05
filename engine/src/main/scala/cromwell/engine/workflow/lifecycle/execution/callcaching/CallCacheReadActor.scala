@@ -59,7 +59,7 @@ class CallCacheReadActor(cache: CallCache,
   }
 
   // EnhancedBatchActor overrides
-  override def receive: Receive = instrumentationReceive.orElse(super.receive)
+  override def receive: Receive = enhancedReceive.orElse(super.receive)
   override protected def instrumentationPath = NonEmptyList.of("callcaching", "read")
   override protected def instrumentationPrefix = InstrumentationPrefixes.JobPrefix
   override def commandToData(snd: ActorRef) = {
@@ -68,6 +68,7 @@ class CallCacheReadActor(cache: CallCache,
 }
 
 object CallCacheReadActor {
+  // Call cache read actor is routed amongst several actors, so set a smaller queue threshold
   val QueueThreshold = 10 * 1000
   def props(callCache: CallCache, serviceRegistryActor: ActorRef): Props = {
     Props(new CallCacheReadActor(callCache, serviceRegistryActor, QueueThreshold)).withDispatcher(EngineDispatcher)

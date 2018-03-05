@@ -49,8 +49,15 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
 
   implicit val ec = context.dispatcher
   private val name = self.path.name
-  
+
+  /**
+    * Override to false to prevent this actor to log its configuration on startup
+    */
   protected def logOnStartUp: Boolean = true
+
+  /**
+    * Override to true if this actor is going to be placed behind a routed
+    */
   protected def routed: Boolean = false
 
   override def preStart(): Unit = {
@@ -65,20 +72,12 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
 
   def commandToData(snd: ActorRef): PartialFunction[Any, C]
 
-  /**
-    * This method is called periodically with the current weight of the queue.
-    * Subclasses can use the information at their will
-    */
-  def weightUpdate(weight: Int): Unit = {}
-
   when(WaitingToProcess) {
     // On a regular event, only process if we're above the batch size is reached
     case Event(command, data) if commandToData(sender).isDefinedAt(command) =>
       processIfBatchSizeReached(data.enqueue(commandToData(sender)(command)))
-    // On a scheduled process, always process. Use the opportunity to broadcast the current queue weight
-    case Event(ScheduledProcessAction, data) =>
-      weightUpdate(data.weight)
-      processHead(data)
+    // On a scheduled process, always process
+    case Event(ScheduledProcessAction, data) => processHead(data)
     case Event(ShutdownCommand, data) =>
       logger.info(s"{} Shutting down: ${data.weight} queued messages to process", self.path.name)
       shuttingDown = true
@@ -89,10 +88,8 @@ abstract class BatchActor[C](val flushRate: FiniteDuration,
     // Already processing, enqueue the command
     case Event(command, data) if commandToData(sender).isDefinedAt(command) =>
       stay() using data.enqueue(commandToData(sender)(command))
-    // Already processing, can only do one at a time. Use the opportunity to broadcast the current queue weight
-    case Event(ScheduledProcessAction, data) =>
-      weightUpdate(data.weight)
-      stay()
+    // Already processing, can only do one at a time
+    case Event(ScheduledProcessAction, _) => stay()
     // Process is complete and we're shutting down so process even if we're under batch size
     case Event(ProcessingComplete, data) if shuttingDown =>
       logger.info(s"{} Shutting down: processing ${data.weight} queued messages", self.path.name)

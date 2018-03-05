@@ -12,29 +12,27 @@ object InstrumentedBatchActor {
 }
 
 /**
-  * Layer over batch actor that instruments the throughput and queue size
+  * Can be mixed in a BatchActor to provide helper methods to instrument queue size and throughput
   */
 trait InstrumentedBatchActor[C] { this: BatchActor[C] with CromwellInstrumentation =>
 
   protected def instrumentationPath: NonEmptyList[String]
   protected def instrumentationPrefix: Option[String]
 
-  private val processedPath = if (routed)
-    instrumentationPath.concat(NonEmptyList.of(self.path.name, "processed"))
+  // If this actor is behind a router, add its name to the instrumentation path so that all routees don't override each other's values
+  private def makePath(name: String) = if (routed)
+    instrumentationPath.concat(NonEmptyList.of(self.path.name, name))
   else
-    instrumentationPath.concat(NonEmptyList.one("processed"))
+    instrumentationPath.concat(NonEmptyList.one(name))
 
-  private val queueSizePath = if (routed)
-    instrumentationPath.concat(NonEmptyList.of(self.path.name, "queue"))
-  else
-    instrumentationPath.concat(NonEmptyList.one("queue"))
+  private val processedPath = makePath("processed")
+  private val queueSizePath = makePath("queue")
 
   timers.startPeriodicTimer(QueueSizeTimerKey, QueueSizeTimerAction, CromwellInstrumentation.InstrumentationRate)
 
   /**
     * Don't forget to chain this into your receive method to instrument the queue size:
     * override def receive = instrumentationReceive.orElse(super.receive)
-    * @return
     */
   protected def instrumentationReceive: Receive = {
     case QueueSizeTimerAction => sendGauge(queueSizePath, stateData.weight.toLong, instrumentationPrefix)
