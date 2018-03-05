@@ -31,15 +31,18 @@ class LoadControllerServiceActor(serviceConfig: Config,
                                 ) extends Actor
   with ActorLogging with Listeners with Timers with CromwellInstrumentation {
   private val controlFrequency = serviceConfig.as[Option[FiniteDuration]]("control-frequency").getOrElse(5.seconds)
+  private val memoryThreshold = serviceConfig.as[Option[Long]]("memory-threshold-in-mb").getOrElse(500L)
+  private val memoryCheckRate = serviceConfig.as[Option[FiniteDuration]]("memory-check-rate").getOrElse(30.seconds)
 
   private [impl] var loadLevel: LoadLevel = NormalLoad
   private [impl] var monitoredActors: Set[ActorRef] = Set.empty
   private [impl] var loadMetrics: Map[ActorAndMetric, LoadLevel] = Map.empty
-
+  
   override def receive = listenerManagement.orElse(controlReceive)
 
   override def preStart() = {
     timers.startPeriodicTimer(LoadControlTimerKey, LoadControlTimerAction, controlFrequency)
+    context.actorOf(MemoryLoadControllerActor.props(memoryThreshold, memoryCheckRate, serviceRegistryActor))
     super.preStart()
   }
 
