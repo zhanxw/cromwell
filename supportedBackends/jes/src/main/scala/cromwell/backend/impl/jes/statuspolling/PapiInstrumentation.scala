@@ -28,8 +28,8 @@ object PapiInstrumentation {
 }
 
 trait PapiInstrumentation extends CromwellInstrumentationActor { this: Actor =>
-  def pollSuccess() = increment(PapiPollKey.concat(SuccessKey))
-  def runSuccess() = increment(PapiRunKey.concat(SuccessKey))
+  def pollSuccess() = increment(PapiPollKey.concat(SuccessKey), BackendPrefix)
+  def runSuccess() = increment(PapiRunKey.concat(SuccessKey), BackendPrefix)
 
   def failedQuery(failedQuery: JesApiQueryFailed) = failedQuery.query match {
     case _: JesStatusPollQuery => increment(PapiPollFailedKey.withGoogleThrowable(failedQuery.cause.e), BackendPrefix)
