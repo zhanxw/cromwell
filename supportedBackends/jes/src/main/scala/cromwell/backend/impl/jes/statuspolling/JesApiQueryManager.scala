@@ -103,11 +103,6 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
     timers.startSingleTimer(QueueMonitoringTimerKey, QueueMonitoringTimerAction, 10.seconds)
   }
 
-  override def preStart() = {
-    timers.startSingleTimer(QueueMonitoringTimerKey, QueueMonitoringTimerAction, 10.seconds)
-    super.preStart()
-  }
-
   override def receive = {
     case QueueMonitoringTimerAction => monitorQueueSize()
     case BackendSingletonActorAbortWorkflow(id) => abort(id)
