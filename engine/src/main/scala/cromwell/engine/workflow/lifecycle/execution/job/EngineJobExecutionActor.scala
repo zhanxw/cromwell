@@ -3,7 +3,7 @@ package cromwell.engine.workflow.lifecycle.execution.job
 import java.util.concurrent.TimeoutException
 
 import akka.actor.SupervisorStrategy.{Escalate, Stop}
-import akka.actor.{ActorInitializationException, ActorRef, LoggingFSM, OneForOneStrategy, Props}
+import akka.actor.{ActorInitializationException, ActorRef, LoggingFSM, OneForOneStrategy, Props, Timers}
 import cromwell.backend.BackendCacheHitCopyingActor.CopyOutputsCommand
 import cromwell.backend.BackendJobExecutionActor._
 import cromwell.backend.BackendLifecycleActor.AbortJobCommand
@@ -60,7 +60,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
                               backendName: String,
                               callCachingMode: CallCachingMode,
                               command: BackendJobExecutionActorCommand) extends LoggingFSM[EngineJobExecutionActorState, EJEAData]
-  with WorkflowLogging with CallMetadataHelper with JobInstrumentation {
+  with WorkflowLogging with CallMetadataHelper with JobInstrumentation with Timers {
 
   override val workflowIdForLogging = workflowDescriptor.id
   override val workflowIdForCallMetadata = workflowDescriptor.id
@@ -101,6 +101,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   implicit val ec: ExecutionContext = context.dispatcher
 
   override def preStart() = {
+    timers.startPeriodicTimer("Debug", "PRINT_STATE", 10.seconds)
     log.debug(s"$tag: $effectiveCallCachingKey: $effectiveCallCachingMode")
   }
 
@@ -116,7 +117,6 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   when(RequestingExecutionToken) {
     case Event(JobExecutionTokenDispensed, NoData) =>
-      workflowLogger.info(s"$tag Got Token")
       replyTo ! JobStarting(jobDescriptorKey)
       if (restarting) {
         val jobStoreKey = jobDescriptorKey.toJobStoreKey(workflowIdForLogging)
@@ -130,10 +130,8 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   // When CheckingJobStore, the FSM always has NoData
   when(CheckingJobStore) {
     case Event(JobNotComplete, NoData) =>
-      workflowLogger.info(s"$tag Job not complete")
       checkCacheEntryExistence()
     case Event(JobComplete(jobResult), NoData) =>
-      workflowLogger.info(s"$tag Job complete")
       respondAndStop(jobResult.toBackendJobResponse(jobDescriptorKey))
     case Event(f: JobStoreReadFailure, NoData) =>
       writeCallCachingModeToMetadata()
@@ -331,6 +329,9 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   }
 
   whenUnhandled {
+    case Event("PRINT_STATE", _) =>
+      log.info(s"$tag - ${stateName}")
+      stay()
     case Event(EngineStatsActor.JobCountQuery, _) =>
       sender ! EngineStatsActor.JobCount(1)
       stay()
@@ -451,7 +452,6 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   def createJobPreparationActor(jobPrepProps: Props, name: String): ActorRef = context.actorOf(jobPrepProps, name)
   def prepareJob(valueStore: ValueStore) = {
-    workflowLogger.info(s"$tag Preparing job")
     writeCallCachingModeToMetadata()
     val jobPreparationActorName = s"BackendPreparationActor_for_$jobTag"
     val jobPrepProps = JobPreparationActor.props(workflowDescriptor, jobDescriptorKey, factory, workflowDockerLookupActor = workflowDockerLookupActor,
@@ -525,7 +525,6 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   } 
   
   private def runJob(data: ResponsePendingData) = {
-    workflowLogger.info(s"$tag Running Job")
     val backendJobExecutionActor = createBackendJobExecutionActor(data)
     backendJobExecutionActor ! command
     replyTo ! JobRunning(data.jobDescriptor.key, data.jobDescriptor.evaluatedTaskInputs)
