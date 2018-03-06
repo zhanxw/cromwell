@@ -160,9 +160,9 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
     val delay = nextRequest.backoff.backoffMillis.millis
     queriesWaitingForRetry = queriesWaitingForRetry + nextRequest
     timers.startSingleTimer(nextRequest, nextRequest, delay)
-    failedQuery(failure)
-  } else {
     retriedQuery(failure)
+  } else {
+    failedQuery(failure)
     failure.query.requester ! failure
   }
 
