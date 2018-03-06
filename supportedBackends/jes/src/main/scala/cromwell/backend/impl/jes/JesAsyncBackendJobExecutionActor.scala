@@ -434,7 +434,10 @@ class JesAsyncBackendJobExecutionActor(override val standardParams: StandardAsyn
     }
   }
 
-  override def pollStatusAsync(handle: JesPendingExecutionHandle): Future[RunStatus] = super[JesStatusRequestClient].pollStatus(workflowId, handle.runInfo.get)
+  override def pollStatusAsync(handle: JesPendingExecutionHandle): Future[RunStatus] = {
+    jobLogger.info("Polling")
+    super[JesStatusRequestClient].pollStatus(workflowId, handle.runInfo.get)
+  }
 
   override def customPollStatusFailure: PartialFunction[(ExecutionHandle, Exception), ExecutionHandle] = {
     case (_: JesPendingExecutionHandle@unchecked, JobAbortedException) =>

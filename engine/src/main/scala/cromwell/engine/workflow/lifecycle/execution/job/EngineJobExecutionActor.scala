@@ -101,7 +101,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   implicit val ec: ExecutionContext = context.dispatcher
 
   override def preStart() = {
-    timers.startPeriodicTimer("Debug", "PRINT_STATE", 10.seconds)
+    timers.startPeriodicTimer("Debug", "PRINT_STATE", 5.minutes)
     log.debug(s"$tag: $effectiveCallCachingKey: $effectiveCallCachingMode")
   }
 
@@ -330,7 +330,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   whenUnhandled {
     case Event("PRINT_STATE", _) =>
-      if (stateName != RequestingExecutionToken) log.info(s"$tag - ${stateName}")
+      if (stateName != RequestingExecutionToken) log.info(s"$tag - $stateName")
       stay()
     case Event(EngineStatsActor.JobCountQuery, _) =>
       sender ! EngineStatsActor.JobCount(1)
