@@ -116,6 +116,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   when(RequestingExecutionToken) {
     case Event(JobExecutionTokenDispensed, NoData) =>
+      workflowLogger.info(s"$tag Got Token")
       replyTo ! JobStarting(jobDescriptorKey)
       if (restarting) {
         val jobStoreKey = jobDescriptorKey.toJobStoreKey(workflowIdForLogging)
@@ -129,8 +130,10 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   // When CheckingJobStore, the FSM always has NoData
   when(CheckingJobStore) {
     case Event(JobNotComplete, NoData) =>
+      workflowLogger.info(s"$tag Job not complete")
       checkCacheEntryExistence()
     case Event(JobComplete(jobResult), NoData) =>
+      workflowLogger.info(s"$tag Job complete")
       respondAndStop(jobResult.toBackendJobResponse(jobDescriptorKey))
     case Event(f: JobStoreReadFailure, NoData) =>
       writeCallCachingModeToMetadata()
@@ -448,6 +451,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   def createJobPreparationActor(jobPrepProps: Props, name: String): ActorRef = context.actorOf(jobPrepProps, name)
   def prepareJob(valueStore: ValueStore) = {
+    workflowLogger.info(s"$tag Preparing job")
     writeCallCachingModeToMetadata()
     val jobPreparationActorName = s"BackendPreparationActor_for_$jobTag"
     val jobPrepProps = JobPreparationActor.props(workflowDescriptor, jobDescriptorKey, factory, workflowDockerLookupActor = workflowDockerLookupActor,
@@ -521,6 +525,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
   } 
   
   private def runJob(data: ResponsePendingData) = {
+    workflowLogger.info(s"$tag Running Job")
     val backendJobExecutionActor = createBackendJobExecutionActor(data)
     backendJobExecutionActor ! command
     replyTo ! JobRunning(data.jobDescriptor.key, data.jobDescriptor.evaluatedTaskInputs)

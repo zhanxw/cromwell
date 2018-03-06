@@ -25,6 +25,7 @@ private[statuspolling] trait RunAbort extends PapiInstrumentation { this: JesPol
       // No need to fail the request if the job was already cancelled, we're all good
       if (Option(e.getCode).contains(400) && Option(e.getMessage).contains("Operation has already been canceled")) {
         originalRequest.requester ! JesAbortRequestSuccessful(originalRequest.run.job.jobId)
+        abortSuccess()
         completionPromise.trySuccess(Success(()))
       } else {
         pollingManager ! JesApiAbortQueryFailed(originalRequest, new PAPIApiException(GoogleJsonException(e, responseHeaders)))

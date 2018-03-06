@@ -106,14 +106,19 @@ class JesApiQueryManager(val qps: Int Refined Positive, override val serviceRegi
   override def receive = {
     case QueueMonitoringTimerAction => monitorQueueSize()
     case BackendSingletonActorAbortWorkflow(id) => abort(id)
-    case DoPoll(workflowId, run) => workQueue :+= makePollQuery(workflowId, sender, run)
+    case DoPoll(workflowId, run) => 
+      log.info(s"Poll request for $workflowId ${run.job.jobId}")
+      workQueue :+= makePollQuery(workflowId, sender, run)
     case DoCreateRun(workflowId, genomics, rpr) =>
+      log.info(s"Run request for $workflowId")
       val creationQuery = makeCreateQuery(workflowId, sender, genomics, rpr)
 
       if (creationQuery.contentLength > maxBatchRequestSize) {
         creationQuery.requester ! JesApiRunCreationQueryFailed(creationQuery, requestTooLargeException)
       } else workQueue :+= creationQuery
-    case DoAbortRun(workflowId, run) => workQueue :+= makeAbortQuery(workflowId, sender, run)
+    case DoAbortRun(workflowId, run) =>
+      log.info(s"Abort request for $workflowId ${run.job.jobId}")
+      workQueue :+= makeAbortQuery(workflowId, sender, run)
     case q: PAPIApiRequest => workQueue :+= q
     case RequestJesPollingWork(maxBatchSize) =>
       log.debug("Request for JES Polling Work received (max batch: {}, current queue size is {})", maxBatchSize, workQueue.size)
