@@ -330,7 +330,7 @@ class EngineJobExecutionActor(replyTo: ActorRef,
 
   whenUnhandled {
     case Event("PRINT_STATE", _) =>
-      log.info(s"$tag - ${stateName}")
+      if (stateName != RequestingExecutionToken) log.info(s"$tag - ${stateName}")
       stay()
     case Event(EngineStatsActor.JobCountQuery, _) =>
       sender ! EngineStatsActor.JobCount(1)
