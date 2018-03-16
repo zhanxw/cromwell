@@ -1,9 +1,10 @@
 package wom.types
 
 import spray.json.{JsNumber, JsString}
-import wom.values.{WomInteger, WomLong, WomString}
+import wom.values.{WomInteger, WomLong, WomOptionalValue, WomString}
 
 import scala.util.{Success, Try}
+import WomIntegerLike._
 
 case object WomIntegerType extends WomPrimitiveType {
   val toDisplayString: String = "Int"
@@ -12,11 +13,19 @@ case object WomIntegerType extends WomPrimitiveType {
     case i: Integer => WomInteger(i)
     case n: JsNumber if n.value.isValidInt => WomInteger(n.value.intValue())
     case i: WomInteger => i
-    case WomLong(i) if (i >= Int.MinValue && i <= Int.MaxValue) => WomInteger(i.toInt)
-    case WomLong(i) => throw new RuntimeException(s"Tried to convert a long value $i into an integer but it was outside the bounds of acceptable Integers, namely ${Int.MinValue} <-> ${Int.MaxValue}")
-    case s: WomString => WomInteger(s.value.toInt)
-    case s: String => WomInteger(s.toInt)
-    case s: JsString => WomInteger(s.value.toInt)
+    case WomLong(i) if i.inIntRange => WomInteger(i.toInt)
+    case WomLong(i) => throw new RuntimeException(
+      s"Tried to convert a Long value $i into an Int but it was outside the bounds of acceptable Ints, namely ${Int.MinValue} <-> ${Int.MaxValue}")
+    case WomOptionalValue(WomIntegerType, Some(i)) => i
+    case WomOptionalValue(WomLongType, Some(WomLong(i))) if i.inIntRange =>
+      WomInteger(i.toInt)
+    case WomOptionalValue(WomLongType, Some(WomLong(i))) =>
+      throw new RuntimeException(
+        s"Tried to convert a filled Long optional $i into a non-optional Int, however " +
+        s"the Long was outside the bounds of acceptable Ints, namely ${Int.MinValue} <-> ${Int.MaxValue}")
+    case s: WomString => WomInteger(s.value.asInt)
+    case s: String => WomInteger(s.asInt)
+    case s: JsString => WomInteger(s.value.asInt)
   }
 
   private def binaryOperator(rhs: WomType, symbol: String): Try[WomType] = rhs match {

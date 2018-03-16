@@ -1,7 +1,7 @@
 package wom.types
 
 import spray.json.JsString
-import wom.values.{WomPrimitive, WomPrimitiveFile, WomString, WomValue}
+import wom.values.{WomOptionalValue, WomPrimitive, WomPrimitiveFile, WomString, WomValue}
 
 import scala.util.{Failure, Success, Try}
 
@@ -12,6 +12,7 @@ case object WomStringType extends WomPrimitiveType {
     case s: String => WomString(s)
     case s: JsString => WomString(s.value)
     case s: WomString => s
+    case WomOptionalValue(WomStringType, Some(s)) => s
     case f: WomPrimitiveFile => WomString(f.value)
     case p: WomPrimitive => WomString(p.toWomString)
   }

@@ -1,7 +1,8 @@
 package wom.types
 
 import spray.json.{JsNumber, JsString}
-import wom.values.{WomFloat, WomString}
+import wom.types.WomFloatLike._
+import wom.values.{WomFloat, WomOptionalValue, WomString}
 
 import scala.util.{Success, Try}
 
@@ -13,9 +14,10 @@ case object WomFloatType extends WomPrimitiveType {
     case d: Double => WomFloat(d)
     case n: JsNumber => WomFloat(n.value.doubleValue())
     case f: WomFloat => f
-    case s: String => WomFloat(s.toDouble)
-    case s: JsString => WomFloat(s.value.toDouble)
-    case s: WomString => WomFloat(s.value.toDouble)
+    case s: String => WomFloat(s.asDouble)
+    case s: JsString => WomFloat(s.value.asDouble)
+    case s: WomString => WomFloat(s.value.asDouble)
+    case WomOptionalValue(WomFloatType, Some(d)) => d
   }
 
   private def binaryOperator(rhs: WomType, symbol: String): Try[WomType] = rhs match {

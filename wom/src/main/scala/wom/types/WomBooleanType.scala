@@ -1,7 +1,7 @@
 package wom.types
 
 import spray.json.{JsBoolean, JsString}
-import wom.values.{WomBoolean, WomValue}
+import wom.values.{WomBoolean, WomOptionalValue, WomValue}
 
 import scala.util.{Success, Try}
 
@@ -10,6 +10,7 @@ case object WomBooleanType extends WomPrimitiveType {
 
   override protected def coercion = {
     case b: Boolean => WomBoolean(b)
+    case WomOptionalValue(WomBooleanType, Some(WomBoolean(b))) => WomBoolean(b)
     case s: String if s.equalsIgnoreCase("true") => WomBoolean.True
     case s: String if s.equalsIgnoreCase("false") => WomBoolean.False
     case s: JsString if s.value.equalsIgnoreCase("true") => WomBoolean.True
