@@ -127,7 +127,11 @@ object InputParameter {
         }
       }
 
-      womValue => populateFiles(womValue).toTry(s"loading $womValue for ${inputParameter.id}").get
+      womValue => {
+        val populatedValue = populateFiles(womValue)
+        println(populatedValue.map(_.toString).valueOr(_.toList.mkString(", ")))
+        populatedValue.toTry(s"loading $womValue for ${inputParameter.id}").get
+      }
     }
   }
 
