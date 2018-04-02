@@ -29,7 +29,8 @@ case class DefaultStandardExpressionFunctionsParams(override val pathBuilders: P
 // TODO: Once we figure out premapping and postmapping, maybe we can standardize that behavior. Currently that's the most important feature that subclasses override.
 class StandardExpressionFunctions(val standardParams: StandardExpressionFunctionsParams)
   extends GlobFunctions with DirectoryFunctions with ReadLikeFunctions with WriteFunctions with CallCorePathFunctions {
-
+  
+  // hello
   override lazy val ec = standardParams.executionContext
 
   protected lazy val ioCommandBuilder: IoCommandBuilder = DefaultIoCommandBuilder
