@@ -1,0 +1,11 @@
+--__END_OF_PART__
+Content-Length: 352
+Content-Type: application/http
+content-id: 1
+content-transfer-encoding: binary
+
+GET https://genomics.googleapis.com/v2alpha1/projects/broad-dsde-cromwell-dev/operations/5425564339755404530 HTTP/1.1
+Authorization: Bearer ya29.c.EpMBnQVcy1YK8jjKwqKs0XOAO-8eb07FbGD9hteMH045cMxZ7Y7B-XkvRHquHJOce1PChQxbWuwfN6GJq75q9sJiHqhd8Mc81hPu6-DM7p9f6fhsf4uioi8vn5FdqtQ5kBOUp0MqHjncgKauZDw9596i_ZOLwx42_t9M19f7ZGy1t6Qb1sqFskhYPW6M-o68o0edkxQ2
+
+
+--__END_OF_PART__--

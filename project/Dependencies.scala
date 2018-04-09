@@ -25,12 +25,13 @@ object Dependencies {
   val ficusV = "1.4.1"
   val fs2V = "0.10.2"
   val gaxV = "1.9.0"
-  val googleApiClientV = "1.22.0"
+  val googleApiClientV = "1.23.0"
   val googleCloudComputeV = "0.26.0-alpha"
   val googleCloudCoreV = "1.8.0"
   val googleCloudNioV = "0.20.1-alpha"
   val googleCredentialsV = "0.8.0"
-  val googleGenomicsServicesApiV = "v1alpha2-rev64-1.22.0"
+  val googleGenomicsServicesV2ApiV = "v2alpha1-rev8-1.23.0"
+  val googleGenomicsServicesApiV = "v1alpha2-rev495-1.23.0"
   val googleHttpClientV = googleApiClientV
   val googleOauth2V = "0.8.0"
   val googleOauthClientV = googleApiClientV
@@ -138,6 +139,20 @@ object Dependencies {
   )
 
   // Internal collections of dependencies
+  private val circeYamlDependency = "io.circe" %% "circe-yaml" % circeYamlV
+
+  private val circeOpticsDependency = "io.circe" %% "circe-optics" % circeV
+
+  private val circeDependencies = List(
+    "core",
+    "parser",
+    "generic",
+    "generic-extras",
+    "shapes",
+    "refined",
+    "literal",
+    "fs2"
+  ).map(m => "io.circe" %% s"circe-$m" % circeV) :+ circeYamlDependency :+ circeOpticsDependency
 
   private val betterFilesDependencies = List(
     "com.github.pathikrit" %% "better-files" % betterFilesV
@@ -207,12 +222,20 @@ object Dependencies {
     "com.google.api-client" % "google-api-client-jackson2" % googleApiClientV
       exclude("com.google.guava", "guava-jdk5")
   )
+  
+  private val googleGenomicsV1Dependency = List(
+    "com.google.apis" % "google-api-services-genomics" % googleGenomicsServicesApiV
+      exclude("com.google.guava", "guava-jdk5")
+  )
 
+  private val googleGenomicsV2Dependency = List(
+    "com.google.apis" % "google-api-services-genomics" % googleGenomicsServicesV2ApiV
+      exclude("com.google.guava", "guava-jdk5")
+  )
+  
   private val googleCloudDependencies = List(
     "io.grpc" % "grpc-core" % grpcV,
     "com.google.guava" % "guava" % guavaV,
-    "com.google.apis" % "google-api-services-genomics" % googleGenomicsServicesApiV
-      exclude("com.google.guava", "guava-jdk5"),
     "com.google.cloud" % "google-cloud-nio" % googleCloudNioV
       exclude("com.google.api.grpc", "grpc-google-common-protos")
       exclude("com.google.cloud.datastore", "datastore-v1-protos")
@@ -222,6 +245,10 @@ object Dependencies {
       exclude("com.google.apis", "google-api-services-genomics"),
     "org.apache.httpcomponents" % "httpclient" % apacheHttpClientV
   )
+
+  val googlePipelinesV1Alpha2Dependencies = googleCloudDependencies ++ googleGenomicsV1Dependency
+
+  val googlePipelinesV2Alpha1Dependencies = googleCloudDependencies ++ googleGenomicsV2Dependency
 
   private val aliyunOssDependencies = List(
     "com.aliyun.oss" % "aliyun-sdk-oss" % alibabaCloudOssV
@@ -252,18 +279,6 @@ object Dependencies {
   private val refinedTypeDependenciesList = List(
     "eu.timepit" %% "refined" % refinedV
   )
-
-  private val circeYamlDependency = "io.circe" %% "circe-yaml" % circeYamlV
-
-  private val circeDependencies = List(
-    "core",
-    "parser",
-    "generic",
-    "generic-extras",
-    "shapes",
-    "refined",
-    "literal"
-  ).map(m => "io.circe" %% s"circe-$m" % circeV) :+ circeYamlDependency
 
   // Sub-project dependencies, added in addition to any dependencies inherited from .dependsOn().
 
@@ -309,7 +324,6 @@ object Dependencies {
     "com.lihaoyi" %% "ammonite-ops" % ammoniteOpsV,
     "org.scalactic" %% "scalactic" % scalacticV,
     "org.scalacheck" %% "scalacheck" % scalacheckV % Test,
-    "io.circe" %% "circe-optics" % circeV,
     "org.mozilla" % "rhino" % rhinoV,
     "org.javadelight" % "delight-rhino-sandbox" % delightRhinoSandboxV,
     "org.scalamock" %% "scalamock" % scalamockV % Test,
@@ -319,8 +333,7 @@ object Dependencies {
   val womtoolDependencies = catsDependencies ++ slf4jBindingDependencies
 
   val centaurCwlRunnerDependencies = List(
-    "com.github.scopt" %% "scopt" % scoptV,
-    "io.circe" %% "circe-optics" % circeV
+    "com.github.scopt" %% "scopt" % scoptV
   ) ++ slf4jBindingDependencies ++ circeDependencies
 
   val coreDependencies = List(
@@ -348,7 +361,7 @@ object Dependencies {
 
   val centaurDependencies = List(
     "com.github.kxbmap" %% "configs" % configsV
-  ) ++ circeDependencies ++ slf4jBindingDependencies
+  ) ++ circeDependencies ++ slf4jBindingDependencies ++ googlePipelinesV1Alpha2Dependencies
 
   val engineDependencies = List(
     "commons-codec" % "commons-codec" % commonsCodecV,
