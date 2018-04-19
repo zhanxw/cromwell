@@ -1,10 +1,9 @@
 package cromwell.backend.google.pipelines.v2alpha1.api
 
 import java.time.OffsetDateTime
-import java.util.{ArrayList => JArrayList}
+import java.util.{ArrayList => JArrayList, Map => JMap}
 
 import com.google.api.client.json.GenericJson
-import com.google.api.client.util.{ArrayMap => GArrayMap}
 import com.google.api.services.genomics.v2alpha1.model.{Event, Operation, Pipeline, WorkerAssignedEvent}
 import cromwell.core.ExecutionEvent
 import mouse.all._
@@ -45,7 +44,7 @@ private [api] object Deserialization {
       * Deserializes the events to com.google.api.services.genomics.v2alpha1.model.Event
       */
     def events: List[Event] = operation
-      .getMetadata.asScala("events").asInstanceOf[JArrayList[GArrayMap[String, Object]]]
+      .getMetadata.asScala("events").asInstanceOf[JArrayList[JMap[String, Object]]]
       .asScala.toList
       .map(deserializeTo[Event])
 
@@ -53,8 +52,7 @@ private [api] object Deserialization {
       * Deserializes the pipeline to com.google.api.services.genomics.v2alpha1.model.Pipeline
       */
     def pipeline: Pipeline = operation
-      .getMetadata.asScala("pipeline").asInstanceOf[GArrayMap[String, Object]]
-      .asScala.asJava |> deserializeTo[Pipeline]
+      .getMetadata.asScala("pipeline").asInstanceOf[JMap[String, Object]] |> deserializeTo[Pipeline]
 
     def hasStarted = events.exists(_.hasDetailsClass[WorkerAssignedEvent])
   }
@@ -62,7 +60,7 @@ private [api] object Deserialization {
   /**
     * Deserializes a java.util.Map[String, Object] to an instance of T
     */
-  private def deserializeTo[T <: GenericJson](attributes: java.util.Map[String, Object])(implicit tag: ClassTag[T]): T = {
+  private def deserializeTo[T <: GenericJson](attributes: JMap[String, Object])(implicit tag: ClassTag[T]): T = {
     // Create a new instance, because it's a GenericJson there's always a 0-arg constructor
     val newT = tag.runtimeClass.asInstanceOf[Class[T]].newInstance()
 
