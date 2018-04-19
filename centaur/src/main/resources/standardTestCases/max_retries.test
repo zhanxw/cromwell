@@ -1,0 +1,12 @@
+name: max_retries
+testFormat: workflowfailure
+backends: [Jes, Local]
+
+files {
+  workflow: max_retries/max_retries.wdl
+}
+
+metadata {
+  "calls.retry_for_me.broken_task.0.backendStatus": "RetryableFailure"
+  "calls.retry_for_me.broken_task.1.backendStatus": "Failed"
+}
