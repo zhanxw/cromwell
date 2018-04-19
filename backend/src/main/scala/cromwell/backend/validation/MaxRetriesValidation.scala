@@ -24,6 +24,7 @@ object MaxRetriesValidation {
   def default(runtimeConfig: Option[Config]): RuntimeAttributesValidation[Int] = instance.withDefault(
     configDefaultWomValue(runtimeConfig) getOrElse WomInteger(0))
   def configDefaultWomValue(config: Option[Config]): Option[WomValue] = instance.configDefaultWomValue(config)
+  //maybe this needs a cieling declared? It could be detrimental....
 }
 
 class MaxRetriesValidation(attributeName: String) extends IntRuntimeAttributesValidation(attributeName) {
