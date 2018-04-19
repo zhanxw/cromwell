@@ -32,7 +32,8 @@ env:
     # Setting this variable twice will cause the 'script' section to run twice with the respective env var invoked
     - BUILD_TYPE=sbt
     - BUILD_TYPE=checkPublish
-    - BUILD_TYPE=centaurJes
+    - BUILD_TYPE=centaurPAPIv1
+    - BUILD_TYPE=centaurPAPIv2
     - BUILD_TYPE=centaurLocal
     - BUILD_TYPE=centaurTes
     - BUILD_TYPE=centaurCwlConformanceLocal

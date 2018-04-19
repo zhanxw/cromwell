@@ -14,10 +14,10 @@ case "$TRAVIS_EVENT_TYPE" in
     push|pull_request|api)
     # BUILD_TYPE is coming in from the Travis build matrix
         case "$BUILD_TYPE" in
-        centaurPapiv1)
+        centaurPAPIv1)
             "${SCRIPT_DIR}"/testCentaurPapiv1.sh
             ;;
-        centaurPapiv2)
+        centaurPAPIv2)
             "${SCRIPT_DIR}"/testCentaurPapiv2.sh
             ;;
         centaurTes)
