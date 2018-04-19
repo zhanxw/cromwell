@@ -27,13 +27,13 @@ private [api] object Deserialization {
     def details[T <: GenericJson](implicit tag: ClassTag[T]): Option[T] = {
       val detailsMap = event.getDetails
       // The @type field contains the type of the attribute
-      if (hasDetailsClass(tag)) {
+      if (hasDetailsClass(tag.runtimeClass.getSimpleName)) {
         Option(deserializeTo(detailsMap)(tag))
       } else None
     }
     
-    def hasDetailsClass[T <: GenericJson](implicit tag: ClassTag[T]): Boolean = {
-      event.getDetails.asScala("@type").asInstanceOf[String].endsWith(tag.runtimeClass.getSimpleName)
+    def hasDetailsClass(className: String): Boolean = {
+      event.getDetails.asScala("@type").asInstanceOf[String].endsWith(className)
     }
 
     def toExecutionEvent = ExecutionEvent(event.getDescription, OffsetDateTime.parse(event.getTimestamp))
@@ -54,7 +54,7 @@ private [api] object Deserialization {
     def pipeline: Pipeline = operation
       .getMetadata.asScala("pipeline").asInstanceOf[JMap[String, Object]] |> deserializeTo[Pipeline]
 
-    def hasStarted = events.exists(_.hasDetailsClass[WorkerAssignedEvent])
+    def hasStarted = events.exists(_.hasDetailsClass(classOf[WorkerAssignedEvent].getSimpleName))
   }
 
   /**
