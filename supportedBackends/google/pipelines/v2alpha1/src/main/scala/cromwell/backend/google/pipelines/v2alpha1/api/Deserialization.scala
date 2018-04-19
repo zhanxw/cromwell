@@ -28,9 +28,13 @@ private [api] object Deserialization {
     def details[T <: GenericJson](implicit tag: ClassTag[T]): Option[T] = {
       val detailsMap = event.getDetails
       // The @type field contains the type of the attribute
-      if (detailsMap.asScala("@type").asInstanceOf[String].endsWith(tag.runtimeClass.getSimpleName)) {
+      if (hasDetailsClass(tag)) {
         Option(deserializeTo(detailsMap)(tag))
       } else None
+    }
+    
+    def hasDetailsClass[T <: GenericJson](implicit tag: ClassTag[T]): Boolean = {
+      event.getDetails.asScala("@type").asInstanceOf[String].endsWith(tag.runtimeClass.getSimpleName)
     }
 
     def toExecutionEvent = ExecutionEvent(event.getDescription, OffsetDateTime.parse(event.getTimestamp))
@@ -52,7 +56,7 @@ private [api] object Deserialization {
       .getMetadata.asScala("pipeline").asInstanceOf[GArrayMap[String, Object]]
       .asScala.asJava |> deserializeTo[Pipeline]
 
-    def hasStarted = events.exists(_.details[WorkerAssignedEvent].isDefined)
+    def hasStarted = events.exists(_.hasDetailsClass[WorkerAssignedEvent])
   }
 
   /**
@@ -75,13 +79,17 @@ private [api] object Deserialization {
         case (Some(f), map: java.util.Map[String, Object] @unchecked) if classOf[GenericJson].isAssignableFrom(f.getType) =>
           val deserializedInnerAttribute = deserializeTo(map)(ClassTag[GenericJson](f.getType))
           newT.set(key, deserializedInnerAttribute)
-        // The set method trips up on some type mismatch between numbers types  
+        // The set method trips up on some type mismatch between number types, this helps it
         case (Some(f), number: Number) if f.getType == Integer.TYPE => newT.set(key, number.intValue())
         case (Some(f), number: Number) if f.getType == classOf[Double] => newT.set(key, number.doubleValue())
         case (Some(f), number: Number) if f.getType == classOf[Float] => newT.set(key, number.floatValue())
         case (Some(f), number: Number) if f.getType == classOf[Long] => newT.set(key, number.longValue())
         // If either the key is not an attribute of T, or we can't assign it - just skip it
         // Throwing here would fail the response interpretation and eventually the workflow, which seems excessive
+        // and would make this logic too fragile.
+        // The only effect is that an attribute might not be populated and would be null.
+        // We would only notice if we do look at this attribute though, which we only do with the purpose of populating metadata
+        // Worst case scenario is thus "a metadata value is null" which seems better over failing the workflow
         case _ => 
       }
     }
