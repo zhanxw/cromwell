@@ -167,11 +167,12 @@ export GOOGLE_AUTH_MODE
 export GOOGLE_REFRESH_TOKEN_PATH
 export GOOGLE_SERVICE_ACCOUNT_JSON
 
-PAPI_V1_JAR_NAME = "google-api-services-genomics-v1alpha2-rev495-1.23.0.jar"
-curl http://repo1.maven.org/maven2/com/google/apis/google-api-services-genomics/v1alpha2-rev495-1.23.0/google-api-services-genomics-v1alpha2-rev495-1.23.0.jar \
+# The V1 of the java genomics api is not included in the fat jar - work around that by including it manually here
+PAPI_V1_JAR_NAME="google-api-services-genomics-v1alpha2-rev495-1.23.0.jar"
+curl http://repo1.maven.org/maven2/com/google/apis/google-api-services-genomics/v1alpha2-rev495-1.23.0/${PAPI_V1_JAR_NAME} \
 -o "${PAPI_V1_JAR_NAME}"
 
-PAPIV1_JAR_CONF="-cp ${CROMWELL_JAR}:${PAPI_V1_JAR_NAME}"
+PAPIV1_JAR_CONF="-cp ${CROMWELL_JAR}:${PAPI_V1_JAR_NAME} cromwell.CromwellApp"
 
 centaur/test_cromwell.sh \
   -j${CROMWELL_JAR} \
@@ -179,7 +180,7 @@ centaur/test_cromwell.sh \
   -c${PAPI_CONF} \
   -elocaldockertest \
   -p100 \
-  -a{PAPIV1_JAR_CONF} \
+  -o${PAPIV1_JAR_CONF} \
   $INTEGRATION_TESTS
 
 if [ "$TRAVIS_EVENT_TYPE" != "cron" ]; then

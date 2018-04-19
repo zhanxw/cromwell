@@ -35,17 +35,14 @@ object CromwellManager {
     if (!isAlive) {
       val logFile: File = File(cromwell.logFile)
 
-      val commandPart1 = List(
+      val command = List(
         "java",
         s"-Dconfig.file=${cromwell.conf}",
         s"-Dwebservice.port=$ManagedCromwellPort"
-      ) ++ cromwell.additionalJvmArguments
-      val commandPart2 = List(
-        "-jar",
-        cromwell.jar,
-        "server"
-      )
-      val command = commandPart1 ++ commandPart2
+      ) ++ cromwell.startCromwellOverride
+        .map(_.split(' ').toList)
+        .getOrElse(List("-jar", cromwell.jar)
+      ) ++ List("server")
       val processBuilder = new java.lang.ProcessBuilder()
         .command(command: _*)
         .redirectOutput(Redirect.appendTo(logFile.toJava))
