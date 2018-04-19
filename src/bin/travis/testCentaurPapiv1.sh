@@ -4,7 +4,7 @@ if [ "$TRAVIS_SECURE_ENV_VARS" = "false" ]; then
     echo "************************************************************************************************"
     echo "************************************************************************************************"
     echo "**                                                                                            **"
-    echo "**  WARNING: Encrypted keys are unavailable to automatically test JES with centaur. Exiting.  **"
+    echo "**  WARNING: Encrypted keys are unavailable to automatically test PAPI with centaur. Exiting. **"
     echo "**                                                                                            **"
     echo "************************************************************************************************"
     echo "************************************************************************************************"
@@ -145,9 +145,9 @@ docker run --rm \
 
 ASSEMBLY_LOG_LEVEL=error ENABLE_COVERAGE=true sbt assembly --error
 CROMWELL_JAR=$(find "$(pwd)/server/target/scala-2.12" -name "cromwell-*.jar")
-JES_CONF="$(pwd)/jes_centaur.conf"
+PAPI_CONF="$(pwd)/papiv1_centaur.conf"
 GOOGLE_AUTH_MODE="service-account"
-GOOGLE_REFRESH_TOKEN_PATH="$(pwd)/jes_refresh_token.txt"
+GOOGLE_REFRESH_TOKEN_PATH="$(pwd)/papi_refresh_token.txt"
 GOOGLE_SERVICE_ACCOUNT_JSON="$(pwd)/cromwell-service-account.json"
 
 # pass integration directory to the inputs json otherwise remove it from the inputs file
@@ -167,12 +167,19 @@ export GOOGLE_AUTH_MODE
 export GOOGLE_REFRESH_TOKEN_PATH
 export GOOGLE_SERVICE_ACCOUNT_JSON
 
+PAPI_V1_JAR_NAME = "google-api-services-genomics-v1alpha2-rev495-1.23.0.jar"
+curl http://repo1.maven.org/maven2/com/google/apis/google-api-services-genomics/v1alpha2-rev495-1.23.0/google-api-services-genomics-v1alpha2-rev495-1.23.0.jar \
+-o "${PAPI_V1_JAR_NAME}"
+
+PAPIV1_JAR_CONF="-cp ${CROMWELL_JAR}:${PAPI_V1_JAR_NAME}"
+
 centaur/test_cromwell.sh \
   -j${CROMWELL_JAR} \
   -g \
-  -c${JES_CONF} \
+  -c${PAPI_CONF} \
   -elocaldockertest \
   -p100 \
+  -a{PAPIV1_JAR_CONF} \
   $INTEGRATION_TESTS
 
 if [ "$TRAVIS_EVENT_TYPE" != "cron" ]; then

@@ -58,6 +58,8 @@ while getopts ":hb:r:c:p:j:ge:i:" option; do
             ;;
         e) EXCLUDE_TAG+=("${OPTARG}")
             ;;
+        a) ADDITIONAL_CENTAUR_CONF="${OPTARG}"
+            ;;
         :) printf "Missing argument for -%s\n" "$OPTARG" >&2
             echo "$usage" >&2
             exit 1
@@ -118,7 +120,7 @@ CENTAUR_CROMWELL_JAR="-Dcentaur.cromwell.jar.path=${CROMWELL_JAR}"
 CENTAUR_CROMWELL_CONF="-Dcentaur.cromwell.jar.conf=${CONFIG_STRING}"
 CENTAUR_CROMWELL_LOG="-Dcentaur.cromwell.jar.log=${CROMWELL_LOG}"
 CENTAUR_CROMWELL_RESTART="-Dcentaur.cromwell.jar.withRestart=true"
-CENTAUR_CONF="${CENTAUR_CROMWELL_MODE} ${CENTAUR_CROMWELL_JAR} ${CENTAUR_CROMWELL_CONF} ${CENTAUR_CROMWELL_LOG} ${CENTAUR_CROMWELL_RESTART}"
+CENTAUR_CONF="${ADDITIONAL_CENTAUR_CONF} ${CENTAUR_CROMWELL_MODE} ${CENTAUR_CROMWELL_JAR} ${CENTAUR_CROMWELL_CONF} ${CENTAUR_CROMWELL_LOG} ${CENTAUR_CROMWELL_RESTART}"
 
 if [[ -n ${EXCLUDE_TAG[*]} ]]; then
     echo "Running Centaur filtering out ${EXCLUDE_TAG[*]} tests"

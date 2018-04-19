@@ -18,35 +18,39 @@ object CromwellManager {
   private var cromwellProcess: Option[Process] = None
   private var _ready: Boolean = false
   private var _isManaged: Boolean = false
-  
+
   /**
     * Returns true if Cromwell is ready to be queried, false otherwise
     * In Unmanaged mode, this is irrelevant so always return true.
     * In managed mode return the value of _ready
     */
   def isReady: Boolean = !_isManaged || _ready
-  
+
   // Check that we have a cromwellProcess, that this process is alive, and that cromwell is ready to accept requests 
   private def isAlive = cromwellProcess.exists(_.isAlive()) && CentaurCromwellClient.isAlive
 
   def startCromwell(cromwell: CromwellConfiguration): Unit = {
     _isManaged = true
-    
+
     if (!isAlive) {
       val logFile: File = File(cromwell.logFile)
 
-      val command = List(
+      val commandPart1 = List(
         "java",
         s"-Dconfig.file=${cromwell.conf}",
-        s"-Dwebservice.port=$ManagedCromwellPort",
+        s"-Dwebservice.port=$ManagedCromwellPort"
+      ) ++ cromwell.additionalJvmArguments
+      val commandPart2 = List(
         "-jar",
         cromwell.jar,
-        "server")
+        "server"
+      )
+      val command = commandPart1 ++ commandPart2
       val processBuilder = new java.lang.ProcessBuilder()
         .command(command: _*)
         .redirectOutput(Redirect.appendTo(logFile.toJava))
         .redirectErrorStream(true)
-        
+
       // Start the cromwell process
       println("Starting Cromwell...")
       val process = processBuilder.start()
@@ -59,7 +63,7 @@ object CromwellManager {
         Thread.sleep(interval.toMillis)
         waitedFor = waitedFor + interval
       }
-      
+
       _ready = true
       if (isAlive) println("Cromwell is running")
       else {
@@ -79,7 +83,7 @@ object CromwellManager {
       process.destroy()
       process.waitFor()
     }
-    
+
     cromwellProcess = None
   }
 }

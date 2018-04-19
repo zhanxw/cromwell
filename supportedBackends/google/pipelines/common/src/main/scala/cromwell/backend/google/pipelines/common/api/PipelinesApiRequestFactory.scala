@@ -7,6 +7,7 @@ import cromwell.backend.google.pipelines.common._
 import cromwell.backend.standard.StandardAsyncJob
 import cromwell.core.StandardPaths
 import cromwell.core.labels.Labels
+import common.util.StringUtil._
 
 /**
   * The PipelinesApiRequestFactory defines the HttpRequests needed to run jobs
@@ -40,6 +41,6 @@ object PipelinesApiRequestFactory {
     def outputParameters = inputOutputParameters.fileOutputParameters
     def allParameters = inputParameters ++ outputParameters
 
-    val logGcsPath = s"$callRootPath/$logFileName"
+    val logGcsPath = callRootPath.ensureSlashed + logFileName
   }
 }

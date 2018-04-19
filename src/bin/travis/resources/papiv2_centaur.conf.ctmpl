@@ -3,11 +3,11 @@
 include "application.conf"
 
 backend {
-  default = "Jes"
-  enabled = ["Jes", "Jes-Refresh"]
+  default = "Papi"
+  enabled = ["Papi", "Papi-Refresh"]
   providers {
     Local.config.filesystems.gcs.auth = "service_account"
-    Jes {
+    Papi {
       actor-factory = "cromwell.backend.google.pipelines.v2alpha1.PipelinesApiLifecycleFactory"
       config {
         project = "broad-dsde-cromwell-dev"
@@ -26,7 +26,7 @@ backend {
         }
       }
     }
-    Jes-Refresh {
+    Papi-Refresh {
       actor-factory = "cromwell.backend.google.pipelines.v2alpha1.PipelinesApiLifecycleFactory"
       config {
         project = "broad-dsde-cromwell-dev"
@@ -41,7 +41,7 @@ backend {
         }
       }
     }
-    Jes-Caching-No-Copy {
+    Papi-Caching-No-Copy {
       actor-factory = "cromwell.backend.google.pipelines.v2alpha1.PipelinesApiLifecycleFactory"
       config {
         project = "broad-dsde-cromwell-dev"
@@ -96,9 +96,9 @@ database {
   profile = "slick.jdbc.MySQLProfile$"
 }
 
-backend.providers.Jes.config.concurrent-job-limit = 20
-backend.providers.Jes-Refresh.config.concurrent-job-limit = 20
-backend.providers.Jes-Caching-No-Copy.config.concurrent-job-limit = 20
+backend.providers.Papi.config.concurrent-job-limit = 20
+backend.providers.Papi-Refresh.config.concurrent-job-limit = 20
+backend.providers.Papi-Caching-No-Copy.config.concurrent-job-limit = 20
 
 {{end}}
 {{end}}

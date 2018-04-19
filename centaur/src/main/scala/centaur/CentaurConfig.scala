@@ -15,8 +15,9 @@ object CromwellConfiguration {
     val jarPath = conf.getString("path")
     val confPath = conf.getString("conf")
     val logPath = conf.getString("log")
+    val jvmArguments = if (conf.hasPath("jvmArguments")) Option(conf.getString("jvmArguments")) else None
     
-    new CromwellConfiguration(jarPath, confPath, logPath)
+    new CromwellConfiguration(jarPath, confPath, logPath, jvmArguments)
   }
 }
 
@@ -49,7 +50,7 @@ case class ManagedCromwellServer(preRestart: CromwellConfiguration, postRestart:
   override val cromwellUrl = new URL(s"http://localhost:${CromwellManager.ManagedCromwellPort}")
 }
 
-case class CromwellConfiguration(jar: String, conf: String, logFile: String)
+case class CromwellConfiguration(jar: String, conf: String, logFile: String, additionalJvmArguments: Option[String])
 
 object CentaurConfig {
   lazy val conf = ConfigFactory.load().getConfig("centaur")

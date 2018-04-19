@@ -43,12 +43,12 @@ docker run --rm \
     -e OUT_PATH=/output \
     broadinstitute/dsde-toolbox render-templates.sh
 
-JES_CONF="$(pwd)/jes_centaur.conf"
+PAPI_CONF="$(pwd)/papiv1_centaur.conf"
 
 # -- END PAPI related conf generation
 
 # Turn off call caching as hashing doesn't work since it sees local and not GCS paths.
-sed -i '/^call-caching\s*/{N;s/enabled.*/  enabled: false/;}' ${JES_CONF}
+sed -i '/^call-caching\s*/{N;s/enabled.*/  enabled: false/;}' ${PAPI_CONF}
 
 ENABLE_COVERAGE=true sbt assembly
 
@@ -83,7 +83,7 @@ export PAPI_INPUT_GCS_PREFIX
 
 java \
   -Xmx2g \
-  -Dconfig.file="$JES_CONF" \
+  -Dconfig.file="$PAPI_CONF" \
   -Dsystem.new-workflow-poll-rate=1 \
   -jar "${CROMWELL_JAR}" server &
 
