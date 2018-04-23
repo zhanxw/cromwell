@@ -210,7 +210,10 @@ class MetadataBuilderActor(serviceRegistryActor: ActorRef) extends LoggingFSM[Me
             }
           case _ => failAndDie(new RuntimeException("Received unexpected response while waiting for sub workflow metadata."))
         }
-      case FailedMetadataResponse(e) => failAndDie(new RuntimeException("Failed to retrieve metadata for a sub workflow.", e))
+      case FailedMetadataResponse(e) =>
+        val message = "Failed to retrieve metadata for a sub workflow."
+        log.error(e, message)
+        failAndDie(new RuntimeException(message, e))
     }
   }
 
