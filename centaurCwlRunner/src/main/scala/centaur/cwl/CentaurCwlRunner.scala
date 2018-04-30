@@ -141,7 +141,12 @@ object CentaurCwlRunner extends StrictLogging {
     val workflowType = Option("cwl")
     val workflowTypeVersion = None
     val optionsContents = outdirOption map { outdir =>
-      JsObject("cwl_outdir" -> JsString(outdir)).compactPrint
+      JsObject(
+        "cwl_outdir" -> JsString(outdir),
+        "default_runtime_attributes" -> JsObject(
+          "docker" -> JsString("us.gcr.io/google-containers/ubuntu-slim:0.14")
+        )
+      ).compactPrint
     }
     val labels = List.empty
     val zippedImports = Option(zipSiblings(workflowPath)) // TODO: Zipping all the things! Be more selective.
