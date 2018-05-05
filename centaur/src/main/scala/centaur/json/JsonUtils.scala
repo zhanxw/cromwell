@@ -28,15 +28,14 @@ object JsonUtils {
       */
     def flatten(prefix: String = ""): JsObject = jsValue.asJsObject.fields.foldLeft(JsObject.empty) {
       case (acc, (k, v: JsArray)) if v.isSingleCallArray => acc ++ JsObject(k -> v.elements.head).flatten(prefix)
-      case (acc, (k, v: JsArray)) if v.hasShardIndex =>
+      case (acc, (k, v: JsArray)) if v.hasShardIndex && v.hasAttempt =>
         // The .get on the shardIndex is safe as we know all elements of the array have a shardIndex field
-        acc ++ v.elements.map(_.asJsObject).fold(JsObject.empty) { (x, y) => x ++ y.flatten(s"$k.${y.shardIndex.get}") }
+        acc ++ v.elements.map(_.asJsObject).fold(JsObject.empty) { (x, y) => x ++ y.flatten(s"$prefix.$k.${y.shardIndex.get}.${y.attempt.get}") }
       case (acc, (k, v: JsArray)) =>
         v.elements.zipWithIndex.foldLeft(acc) { case (accumulator, (element, idx)) =>
-          val maybePrefix = if (prefix.isEmpty) "" else s"$prefix."
           element match {
-            case _: JsObject => accumulator.mergeWith(element.flatten(s"$maybePrefix$k.$idx"))
-            case x: JsValue => accumulator + (s"$maybePrefix$k.$idx" -> x)
+            case _: JsObject => accumulator.mergeWith(element.flatten(s"$prefix$k.$idx"))
+            case x: JsValue => accumulator + (s"$prefix$k.$idx" -> x)
           }
         }
       case (acc, (k, v: JsObject)) =>
@@ -58,6 +57,11 @@ object JsonUtils {
     // A couple of helper functions to assist with flattening Cromwell metadata responses
     def hasShardIndex = jsObject.fields.keySet contains "shardIndex"
     def shardIndex = jsObject.fields.get("shardIndex") map { _.toString() }
+
+
+    def hasAttempt = jsObject.fields.keySet contains "attempt"
+    def attempt = jsObject.fields.get("attempt") map { _.toString() }
+
     def flattenToMap: Map [String, JsValue] = jsObject.flatten().fields map { case (k, v: JsValue) => k -> v}
   }
 
@@ -73,6 +77,11 @@ object JsonUtils {
 
     def hasShardIndex: Boolean = {
       if (jsArray.nonEmptyObjectArray) jsArray.elements.map(_.asJsObject) forall { _.hasShardIndex }
+      else false
+    }
+
+    def hasAttempt: Boolean = {
+      if (jsArray.nonEmptyObjectArray) jsArray.elements.map(_.asJsObject) forall { _.hasAttempt }
       else false
     }
   }
