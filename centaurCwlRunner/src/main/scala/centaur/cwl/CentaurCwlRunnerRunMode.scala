@@ -7,6 +7,7 @@ import cromwell.core.path.Obsolete.Paths
 import cromwell.core.path.{DefaultPathBuilderFactory, PathBuilderFactory}
 import cromwell.filesystems.gcs.GcsPathBuilderFactory
 import cwl.preprocessor.CwlPreProcessor
+import spray.json.{JsObject, JsString, JsValue}
 
 sealed trait CentaurCwlRunnerRunMode {
   /**
@@ -32,6 +33,8 @@ sealed trait CentaurCwlRunnerRunMode {
     * For example, may prefix relative paths so that absolute URLs are used.
     */
   def preProcessInput(path: File): Parse[String] = path.contentAsString.validParse
+  
+  def additionalWorkflowOptions: Map[String, JsValue] = Map.empty
 }
 
 object CentaurCwlRunnerRunMode {
@@ -72,4 +75,10 @@ case class PapiRunMode(conf: Config) extends CentaurCwlRunnerRunMode {
   override def preProcessWorkflow(workflow: String): String = preprocessor.preProcessWorkflow(workflow)
 
   override def preProcessInput(input: File): Parse[String] = preprocessor.preProcessInput(input.contentAsString)
+  
+  override def additionalWorkflowOptions: Map[String, JsValue] = Map(
+    "default_runtime_attributes" -> JsObject(
+      "docker" -> JsString("ubuntu:latest")
+    )
+  )
 }

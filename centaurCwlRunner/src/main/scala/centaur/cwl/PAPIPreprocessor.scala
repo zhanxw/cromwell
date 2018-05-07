@@ -76,7 +76,7 @@ class PAPIPreprocessor(config: Config) {
   def hasDocker(json: Json): Boolean = hasDocker(root.hints)(json) || hasDocker(root.requirements)(json)
 
   // Add a default docker hint to the workflow if it doesn't have one
-  private val addDefaultDocker: Json => Json = workflow => if (!hasDocker(workflow)) {
+  val addDefaultDocker: Json => Json = workflow => if (!hasDocker(workflow)) {
     /*
       * deepMerge does not combine objects together but replaces keys which would overwrite existing hints
       * so first check if there are hints already and if so add our docker one.
@@ -97,5 +97,5 @@ class PAPIPreprocessor(config: Config) {
   /**
     * Pre-process the workflow by adding a default docker hint iff it doesn't have one
     */
-  def preProcessWorkflow(workflow: String): String = processYaml(workflow)(addDefaultDocker.andThen(prefixDefaultFilesInCwl))
+  def preProcessWorkflow(workflow: String): String = processYaml(workflow)(prefixDefaultFilesInCwl)
 }
