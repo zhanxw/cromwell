@@ -53,8 +53,11 @@ case "$TRAVIS_EVENT_TYPE" in
         ;;
     cron)
         case "$BUILD_TYPE" in
-        centaurJes)
-            "${SCRIPT_DIR}"/testCentaurJes.sh -i
+        centaurPAPIv1)
+            "${SCRIPT_DIR}"/testCentaurPapiv1.sh -i
+            ;;
+        centaurPAPIv2)
+            "${SCRIPT_DIR}"/testCentaurPapiv2.sh -i
             ;;
         centaurBcs)
             # Disabled even here in cron until https://github.com/broadinstitute/cromwell/issues/3555
