@@ -4,8 +4,8 @@ import java.nio.file.Paths
 
 import spray.json._
 import wdl.draft2.model.formatter.{AnsiSyntaxHighlighter, HtmlSyntaxHighlighter, SyntaxFormatter, SyntaxHighlighter}
-import wdl.draft2.model.{AstTools, WdlNamespace, WdlNamespaceWithWorkflow, WdlWorkflow}
-import wdl.model.draft3.elements.{FileElement, WorkflowDefinitionElement}
+import wdl.draft2.model._
+import wdl.model.draft3.elements.{CommandSectionElement, FileElement, TaskDefinitionElement, WorkflowDefinitionElement}
 import wdl.draft3.transforms.wdlom2wdl.WdlWriter.ops._
 import wdl.draft3.transforms.wdlom2wdl.WdlWriterImpl.fileElementWriter
 //import wom.callable.WorkflowDefinition
@@ -100,7 +100,7 @@ object WomtoolMain extends App {
 //      case Left(errorList) => UnsuccessfulTermination(errorList.toList.mkString("[", ",", "]"))
 //    }
 
-    def convert(a: WdlWorkflow): WorkflowDefinitionElement = {
+    def convertWorkflow(a: WdlWorkflow): WorkflowDefinitionElement = {
 //      a.ast.
 
       WorkflowDefinitionElement(
@@ -108,6 +108,21 @@ object WomtoolMain extends App {
         inputsSection = None,
         graphElements = Set.empty,
         outputsSection = None,
+        metaSection = None,
+        parameterMetaSection = None
+      )
+    }
+
+    def convertTask(a: WdlTask): TaskDefinitionElement = {
+//      a.ast.
+
+      TaskDefinitionElement(
+        name = a.unqualifiedName,
+        inputsSection = None,
+        declarations = Seq(),
+        outputsSection = None,
+        commandSection = CommandSectionElement(parts = Seq()),
+        runtimeSection = None,
         metaSection = None,
         parameterMetaSection = None
       )
@@ -124,8 +139,8 @@ object WomtoolMain extends App {
       FileElement(
         imports = Seq(),
         structs = Seq(), // no structs in draft-2
-        workflows = wdlNamespace.workflows.map(convert),
-        tasks = Seq()
+        workflows = wdlNamespace.workflows.map(convertWorkflow),
+        tasks = wdlNamespace.tasks.map(convertTask)
       )
 
     SuccessfulTermination(fileElement.toWdlV1)
