@@ -4,7 +4,11 @@ import java.nio.file.Paths
 
 import spray.json._
 import wdl.draft2.model.formatter.{AnsiSyntaxHighlighter, HtmlSyntaxHighlighter, SyntaxFormatter, SyntaxHighlighter}
-import wdl.draft2.model.{AstTools, WdlNamespace, WdlNamespaceWithWorkflow}
+import wdl.draft2.model.{AstTools, WdlNamespace, WdlNamespaceWithWorkflow, WdlWorkflow}
+import wdl.model.draft3.elements.{FileElement, WorkflowDefinitionElement}
+import wdl.draft3.transforms.wdlom2wdl.WdlWriter.ops._
+import wdl.draft3.transforms.wdlom2wdl.WdlWriterImpl.fileElementWriter
+//import wom.callable.WorkflowDefinition
 import womtool.cmdline.HighlightMode.{ConsoleHighlighting, HtmlHighlighting, UnrecognizedHighlightingMode}
 import womtool.cmdline._
 import womtool.graph.{GraphPrint, WomGraph}
@@ -81,21 +85,50 @@ object WomtoolMain extends App {
   }
 
   def v1upgrade(workflowSourcePath: String): Termination = {
-    import cats.implicits._
-    import common.Checked
-    import wdl.draft3.transforms.ast2wdlom.astToFileElement
-    import wdl.draft3.transforms.parsing.fileToAst
-    import wdl.draft3.transforms.wdlom2wdl.WdlWriter.ops._
-    import wdl.draft3.transforms.wdlom2wdl.WdlWriterImpl.fileElementWriter
-    import wdl.model.draft3.elements.FileElement
+//    import cats.implicits._
+//    import common.Checked
+//    import wdl.draft3.transforms.ast2wdlom.astToFileElement
+//    import wdl.draft3.transforms.parsing.fileToAst
 
-    val loader = fileToAst andThen astToFileElement
-    val model: Checked[FileElement] = loader.run(Paths.get(workflowSourcePath))
+//    import wdl.model.draft3.elements.FileElement
+//
+//    val loader = fileToAst andThen astToFileElement
+//    val model: Checked[FileElement] = loader.run(Paths.get(workflowSourcePath))
+//
+//    model match {
+//      case Right(wdlModel) => SuccessfulTermination(wdlModel.toWdlV1)
+//      case Left(errorList) => UnsuccessfulTermination(errorList.toList.mkString("[", ",", "]"))
+//    }
 
-    model match {
-      case Right(wdlModel) => SuccessfulTermination(wdlModel.toWdlV1)
-      case Left(errorList) => UnsuccessfulTermination(errorList.toList.mkString("[", ",", "]"))
+    def convert(a: WdlWorkflow): WorkflowDefinitionElement = {
+//      a.ast.
+
+      WorkflowDefinitionElement(
+        name = a.unqualifiedName,
+        inputsSection = None,
+        graphElements = Set.empty,
+        outputsSection = None,
+        metaSection = None,
+        parameterMetaSection = None
+      )
     }
+
+    val file = Paths.get(workflowSourcePath)
+    val wdlNamespace: WdlNamespace = WdlNamespace.loadUsingPath(file, None, None).get
+
+    wdlNamespace.tasks
+    wdlNamespace.workflows
+    wdlNamespace.imports
+
+    val fileElement =
+      FileElement(
+        imports = Seq(),
+        structs = Seq(), // no structs in draft-2
+        workflows = wdlNamespace.workflows.map(convert),
+        tasks = Seq()
+      )
+
+    SuccessfulTermination(fileElement.toWdlV1)
   }
 
   def graph(workflowSourcePath: String): Termination = {
