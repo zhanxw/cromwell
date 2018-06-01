@@ -399,7 +399,8 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
       computeServiceAccount(jobDescriptor.workflowDescriptor),
       backendLabels,
       preemptible,
-      pipelinesConfiguration.jobShell
+      pipelinesConfiguration.jobShell,
+      pipelinesConfiguration.encryptedDockerCredentials
     )
   }
 
