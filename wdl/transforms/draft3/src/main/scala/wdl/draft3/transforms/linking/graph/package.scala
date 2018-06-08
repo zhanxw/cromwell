@@ -4,7 +4,8 @@ import cats.syntax.apply._
 import cats.syntax.validated._
 import cats.syntax.traverse._
 import cats.instances.list._
-import common.validation.ErrorOr.ErrorOr
+import common.validation.ErrorOr._
+import common.validation.Validation.OptionValidation
 import wdl.model.draft3.graph.GraphElementValueConsumer
 import wdl.model.draft3.graph.GraphElementValueConsumer.ops._
 import wdl.model.draft3.graph.ExpressionValueConsumer.ops._
@@ -67,7 +68,9 @@ package object graph {
 
   implicit val graphElementUnlinkedValueConsumer: GraphElementValueConsumer[WorkflowGraphElement] = new GraphElementValueConsumer[WorkflowGraphElement] {
     override def graphElementConsumedValueHooks(a: WorkflowGraphElement, typeAliases: Map[String, WomType], callables: Map[String, Callable]): ErrorOr[Set[UnlinkedConsumedValueHook]] = a match {
-      case InputDeclarationElement(_, _, None) => Set.empty[UnlinkedConsumedValueHook].validNel
+//      case InputDeclarationElement(_, name, None) => Set[UnlinkedConsumedValueHook](UnlinkedIdentifierHook(name)).validNel
+      case InputDeclarationElement(_, name, exprOption) =>
+        (Set[UnlinkedConsumedValueHook](UnlinkedIdentifierHook(name)) ++ exprOption.toSet.flatMap { expr: ExpressionElement => expr.expressionConsumedValueHooks }).validNel
       case DeclarationElement(_, _, Some(expr)) => expr.expressionConsumedValueHooks.validNel
       case a: ScatterElement => a.graphElementConsumedValueHooks(typeAliases, callables)
       case a: IfElement => a.graphElementConsumedValueHooks(typeAliases, callables)
@@ -79,9 +82,20 @@ package object graph {
 
   implicit val callElementUnlinkedValueConsumer: GraphElementValueConsumer[CallElement] = new GraphElementValueConsumer[CallElement] {
     override def graphElementConsumedValueHooks(a: CallElement, typeAliases: Map[String, WomType], callables: Map[String, Callable]): ErrorOr[Set[UnlinkedConsumedValueHook]] = {
-      a.body match {
-        case Some(callBodyElement: CallBodyElement) => callBodyElement.inputs.flatMap(_.expressionConsumedValueHooks).toSet.validNel
-        case None => Set.empty[UnlinkedConsumedValueHook].valid
+      val callableToCallValidation: ErrorOr[Callable] = callables.get(a.callableReference).toErrorOr(s"Cannot find any callable with the name '${a.callableReference}' in ${callables.keySet.mkString("[", ",", "]")}")
+
+      callableToCallValidation flatMap { callableToCall =>
+        val suppliedInputNames: Set[String] = a.body.toSet.flatMap { body: CallBodyElement => body.inputs.map(_.key) }
+        val requiredInputNames: Set[String] = callableToCall.inputs.map(_.name).toSet
+        val unsuppliedInputNames: Set[String] = requiredInputNames.diff(suppliedInputNames)
+        val consumedCallInputs = unsuppliedInputNames.map { name => UnlinkedCallInputHook(a.callReference, name) }
+
+        val consumedExpressionValues = a.body match {
+          case Some(callBodyElement: CallBodyElement) => callBodyElement.inputs.flatMap(_.expressionConsumedValueHooks).toSet
+          case None => Set.empty[UnlinkedConsumedValueHook]
+        }
+
+        (consumedCallInputs ++ consumedExpressionValues).validNel
       }
     }
   }
@@ -98,6 +112,7 @@ package object graph {
           case UnlinkedIdentifierHook(id) => bodyGeneratedValues.contains(id) || id == a.scatterVariableName
           case UnlinkedCallOutputOrIdentifierAndMemberAccessHook(first, second) =>
             bodyGeneratedValues.contains(first) || bodyGeneratedValues.contains(s"$first.$second") || a.scatterVariableName == first
+          case _ => false
         }
 
         unsatisfiedBodyElementHooks ++ scatterExpressionHooks
@@ -116,6 +131,7 @@ package object graph {
         val unsatisfiedBodyElementHooks = bodyConsumedValues.filterNot {
           case UnlinkedIdentifierHook(id) => bodyGeneratedValues.contains(id)
           case UnlinkedCallOutputOrIdentifierAndMemberAccessHook(first, second) => bodyGeneratedValues.contains(first) || bodyGeneratedValues.contains(s"$first.$second")
+          case _ => false
         }
 
         unsatisfiedBodyElementHooks ++ scatterExpressionHooks

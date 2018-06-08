@@ -28,14 +28,16 @@ object LinkedGraphMaker {
     val consumedValuesByGraphNodeValidation: ErrorOr[Map[WorkflowGraphElement, Set[UnlinkedConsumedValueHook]]] = nodes.toList.traverse(n => n.graphElementConsumedValueHooks(typeAliases, callables).map(n -> _)).map(_.toMap)
 
     for {
-      generatedValuesByGraphNode <- generatedValuesByGraphNodeValidation
       consumedValuesByGraphNode <- consumedValuesByGraphNodeValidation
+      generatedValuesByGraphNode <- generatedValuesByGraphNodeValidation
       graphNodeByGeneratedValue <- reverseMap(generatedValuesByGraphNode)
       allHandles = graphNodeByGeneratedValue.keySet ++ externalHandles
       consumedValueLookup <- makeConsumedValueLookup(nodes, typeAliases, allHandles, callables)
       edges = makeEdges(nodes, consumedValuesByGraphNode, consumedValueLookup, graphNodeByGeneratedValue)
     } yield LinkedGraph(nodes, edges, allHandles, consumedValueLookup, typeAliases)
   }
+
+  def generateInputNodes()
 
   def getOrdering(linkedGraph: LinkedGraph): ErrorOr[List[WorkflowGraphElement]] = {
     // Find the topological order in which we must create the graph nodes:
@@ -86,7 +88,7 @@ object LinkedGraphMaker {
     }
 
 
-    consumedValues.toList.traverse { findHandle } map {_.toMap}
+    consumedValues.filterNot(_.isInstanceOf[UnlinkedCallInputHook]).toList.traverse { findHandle } map {_.toMap}
 
   }
 

@@ -23,7 +23,7 @@ object CallElementToGraphNode {
   def convert(a: CallNodeMakerInputs): ErrorOr[Set[GraphNode]] = {
     val callNodeBuilder = new CallNode.CallNodeBuilder()
 
-    val callName = a.node.alias.getOrElse(a.node.callableReference.split("\\.").last)
+    val callName = a.node.callReference
 
     // match the call element to a callable
     def callableValidation: ErrorOr[Callable] =
