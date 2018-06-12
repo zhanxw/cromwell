@@ -1,5 +1,7 @@
 package wdl.model.draft3.graph
 
+import wom.types.WomType
+
 sealed trait UnlinkedConsumedValueHook
 
 final case class UnlinkedIdentifierHook(name: String) extends UnlinkedConsumedValueHook
@@ -8,7 +10,8 @@ final case class UnlinkedIdentifierHook(name: String) extends UnlinkedConsumedVa
   * Hook representing unlinked call inputs. We'll satisfy these by creating input nodes.
   */
 final case class UnlinkedCallInputHook(callReference: String,
-                                       inputName: String) extends UnlinkedConsumedValueHook
+                                       inputName: String,
+                                       inputType: WomType) extends UnlinkedConsumedValueHook
 
 /**
   * Until we do the linking, we can't tell whether a consumed 'x.y' is a call output or a member access for 'y' on

@@ -5,13 +5,12 @@ import cats.syntax.traverse._
 import cats.instances.list._
 import common.validation.ErrorOr._
 import common.validation.ErrorOr.ErrorOr
-import wdl.model.draft3.elements.WorkflowGraphElement
+import wdl.model.draft3.elements.{InputDeclarationElement, WorkflowGraphElement}
 import wdl.model.draft3.graph._
 import wdl.model.draft3.graph.UnlinkedValueGenerator.ops._
 import wdl.model.draft3.graph.GraphElementValueConsumer.ops._
 import wom.callable.Callable
 import wom.types.WomType
-
 import scalax.collection.Graph
 import scalax.collection.GraphEdge.DiEdge
 
@@ -21,7 +20,7 @@ object LinkedGraphMaker {
            typeAliases: Map[String, WomType],
            callables: Map[String, Callable]): ErrorOr[LinkedGraph] = {
 
-    val generatedValuesByGraphNodeValidation = nodes.toList.traverse{ node =>
+    def generatedValuesByGraphNodeValidation(nodes: Set[WorkflowGraphElement]): ErrorOr[Map[WorkflowGraphElement, Set[GeneratedValueHandle]]] = nodes.toList.traverse{ node =>
       node.generatedValueHandles(typeAliases, callables).map(node -> _)
     } map (_.toMap)
 
@@ -29,15 +28,19 @@ object LinkedGraphMaker {
 
     for {
       consumedValuesByGraphNode <- consumedValuesByGraphNodeValidation
-      generatedValuesByGraphNode <- generatedValuesByGraphNodeValidation
+      unlinkedInputs = generateUnspecifiedInputs(consumedValuesByGraphNode.values.toSet.flatten)
+      allNodes = nodes ++ unlinkedInputs
+      generatedValuesByGraphNode <- generatedValuesByGraphNodeValidation(allNodes)
       graphNodeByGeneratedValue <- reverseMap(generatedValuesByGraphNode)
       allHandles = graphNodeByGeneratedValue.keySet ++ externalHandles
-      consumedValueLookup <- makeConsumedValueLookup(nodes, typeAliases, allHandles, callables)
-      edges = makeEdges(nodes, consumedValuesByGraphNode, consumedValueLookup, graphNodeByGeneratedValue)
-    } yield LinkedGraph(nodes, edges, allHandles, consumedValueLookup, typeAliases)
+      consumedValueLookup <- makeConsumedValueLookup(allNodes, typeAliases, allHandles, callables)
+      edges = makeEdges(allNodes, consumedValuesByGraphNode, consumedValueLookup, graphNodeByGeneratedValue)
+    } yield LinkedGraph(allNodes, edges, allHandles, consumedValueLookup, typeAliases)
   }
 
-  def generateInputNodes()
+  def generateUnspecifiedInputs(consumed: Set[UnlinkedConsumedValueHook]): Set[WorkflowGraphElement] = consumed collect {
+    case UnlinkedCallInputHook(callReference, inputName, womType) => InputDeclarationElement(womType)
+  }
 
   def getOrdering(linkedGraph: LinkedGraph): ErrorOr[List[WorkflowGraphElement]] = {
     // Find the topological order in which we must create the graph nodes:
