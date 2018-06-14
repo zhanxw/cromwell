@@ -41,6 +41,7 @@ fi
 centaur/test_cromwell.sh \
     -j "${CROMWELL_BUILD_JAR}" \
     -c "${CROMWELL_BUILD_SCRIPTS_RESOURCES}/papi_v2_application.conf" \
+    -p 500 \
     -g \
     -e localdockertest \
     -e docker_hash_dockerhub_private \
