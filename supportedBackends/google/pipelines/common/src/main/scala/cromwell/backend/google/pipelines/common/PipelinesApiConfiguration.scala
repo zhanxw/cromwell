@@ -19,19 +19,30 @@ object PipelinesApiConfiguration {
   }
 }
 
-class PipelinesApiConfiguration(
-                                 val configurationDescriptor: BackendConfigurationDescriptor,
-                                 val genomicsFactory: PipelinesApiFactoryInterface,
-                                 val googleConfig: GoogleConfiguration,
-                                 val jesAttributes: PipelinesApiAttributes,
-                               ) extends DefaultJsonProtocol {
+class PipelinesApiConfiguration(val configurationDescriptor: BackendConfigurationDescriptor,
+                                val genomicsFactory: PipelinesApiFactoryInterface,
+                                val googleConfig: GoogleConfiguration,
+                                val jesAttributes: PipelinesApiAttributes) extends DefaultJsonProtocol {
+
   val jesAuths = jesAttributes.auths
   val root = configurationDescriptor.backendConfig.getString("root")
   val runtimeConfig = configurationDescriptor.backendRuntimeConfig
   val jesComputeServiceAccount = jesAttributes.computeServiceAccount
-  val dockerCredentials = BackendDockerConfiguration.build(configurationDescriptor.backendConfig).dockerCredentials map PipelinesApiDockerCredentials.apply
+
+  val dockerCredentials = {
+    BackendDockerConfiguration.build(configurationDescriptor.backendConfig).dockerCredentials map { creds =>
+      PipelinesApiDockerCredentials.apply(creds, googleConfig)
+    }
+  }
+
+  val dockerEncryptionKeyName: Option[String] = dockerCredentials flatMap { _.keyName }
+
+  // FIXME
+  // If there is a dockerhub section in a PAPI v2 config the key and auth names must be set in config. This is
+  // not the right place for this code ultimately since the encrypt/decrypt credentials will change with each
+  // workflow as workflow options. For now assume these are defined, fix later.
   val encryptedDockerCredentials = dockerCredentials map {
-    case PipelinesApiDockerCredentials(_, token) =>
+    case PipelinesApiDockerCredentials(_, token, Some(keyName), _, Some(credential)) =>
       val Array(username, password) = new String(Base64.decodeBase64(token)).split(':')
       val map = JsObject(
         Map(
@@ -39,7 +50,9 @@ class PipelinesApiConfiguration(
           "password" -> JsString(password)
         )
       ).compactPrint
-      GoogleAuthMode.encryptKms(map)
+
+      GoogleAuthMode.encryptKms(keyName, credential, map)
+    case x => throw new RuntimeException("This is just wrong: " + x.toString)
   }
   val needAuthFileUpload = jesAuths.gcs.requiresAuthFile || dockerCredentials.isDefined || jesAttributes.restrictMetadataAccess
   val qps = jesAttributes.qps

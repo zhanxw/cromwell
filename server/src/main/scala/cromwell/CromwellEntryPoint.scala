@@ -20,6 +20,7 @@ import cromwell.server.{CromwellServer, CromwellShutdown, CromwellSystem}
 import common.exception.MessageAggregation
 import common.validation.ErrorOr._
 import net.ceedubs.ficus.Ficus._
+import org.apache.commons.lang3.exception.ExceptionUtils
 import org.slf4j.LoggerFactory
 
 import scala.collection.JavaConverters._
@@ -93,6 +94,8 @@ object CromwellEntryPoint extends GracefulStopSupport {
       case t: Throwable =>
         Log.error("Failed to instantiate Cromwell System. Shutting down Cromwell.")
         Log.error(t.getMessage)
+        val stackTrace = ExceptionUtils.getStackTrace(t)
+        Log.error(stackTrace)
         System.exit(1)
         Failure(t)
     } get

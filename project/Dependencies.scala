@@ -244,6 +244,7 @@ object Dependencies {
       exclude("com.google.apis", "google-api-services-genomics"),
     "org.apache.httpcomponents" % "httpclient" % apacheHttpClientV,
     "com.google.apis" % "google-api-services-cloudkms" % googleCloudKmsV
+      exclude("com.google.guava", "guava-jdk5")
   ) ++ googleGenomicsV1Dependency ++ googleGenomicsV2Dependency
 
   private val aliyunOssDependencies = List(

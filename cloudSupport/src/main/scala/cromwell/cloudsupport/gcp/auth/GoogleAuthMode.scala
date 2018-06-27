@@ -1,10 +1,12 @@
 package cromwell.cloudsupport.gcp.auth
 
-import java.io.{ByteArrayInputStream, FileNotFoundException}
+import java.io.{ByteArrayInputStream, FileNotFoundException, InputStream}
 import java.net.HttpURLConnection._
 
 import better.files.File
+import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
 import com.google.api.client.googleapis.javanet.GoogleNetHttpTransport
+import com.google.api.client.googleapis.testing.auth.oauth2.MockGoogleCredential
 import com.google.api.client.http.HttpResponseException
 import com.google.api.client.json.jackson2.JacksonFactory
 import com.google.api.services.cloudkms.v1.CloudKMS
@@ -62,7 +64,7 @@ object GoogleAuthMode {
     }
   }
 
-  private val kms = {
+  def encryptKms(keyName: String, credential: GoogleCredential, plainText: String) = {
     import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
     import com.google.api.services.cloudkms.v1.CloudKMSScopes
 
@@ -71,17 +73,12 @@ object GoogleAuthMode {
     // Depending on the environment that provides the default credentials (e.g. Compute Engine, App
     // Engine), the credentials may require us to specify the scopes we need explicitly.
     // Check for this case, and inject the scope if required.
-    val scopedCredentials = if (credential.createScopedRequired) credential.createScoped(CloudKMSScopes.all) else credential
+    val scopedCredential = if (credential.createScopedRequired) credential.createScoped(CloudKMSScopes.all) else credential
 
-    new CloudKMS.Builder(httpTransport, jsonFactory, scopedCredentials)
+    val kms = new CloudKMS.Builder(httpTransport, jsonFactory, scopedCredential)
       .setApplicationName("cromwell")
       .build()
-  }
-  private val keyRingId = "tj-private-dockerhub-test"
-  private val locationId = "global"
-  val cryptoKeyId = "tj-private-dockerhub-key"
-  val keyName = s"projects/broad-dsde-cromwell-perf/locations/$locationId/keyRings/$keyRingId/cryptoKeys/$cryptoKeyId"
-  def encryptKms(plainText: String) = {
+
     import com.google.api.services.cloudkms.v1.model.EncryptRequest
     val request = new EncryptRequest().encodePlaintext(plainText.toCharArray.map(_.toByte))
     val response = kms.projects.locations.keyRings.cryptoKeys.encrypt(keyName, request).execute
@@ -121,12 +118,16 @@ sealed trait GoogleAuthMode {
       case Success(_) => credential
     }
   }
+
+  def apiClientGoogleCredential(options: OptionLookup): GoogleCredential
 }
 
 case object MockAuthMode extends GoogleAuthMode {
   override val name = "no_auth"
 
   override def credential(options: OptionLookup): Credentials = NoCredentials.getInstance
+
+  override def apiClientGoogleCredential(options: OptionLookup) = new MockGoogleCredential.Builder().build()
 }
 
 object ServiceAccountMode {
@@ -141,11 +142,19 @@ object ServiceAccountMode {
 
 }
 
+trait ServiceAccountish {
+  protected def jsonCredentialStream(options: OptionLookup): InputStream
+
+  def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = GoogleCredential.fromStream(jsonCredentialStream(options))
+}
+
 final case class ServiceAccountMode(override val name: String,
                                     fileFormat: CredentialFileFormat,
-                                    scopes: java.util.List[String]) extends GoogleAuthMode {
+                                    scopes: java.util.List[String]) extends GoogleAuthMode with ServiceAccountish {
   private val credentialsFile = File(fileFormat.file)
   checkReadable(credentialsFile)
+
+  override protected def jsonCredentialStream(options: OptionLookup): InputStream = credentialsFile.newInputStream
 
   private lazy val _credential: Credentials = {
     val serviceAccount = fileFormat match {
@@ -164,7 +173,7 @@ final case class ServiceAccountMode(override val name: String,
   override def credential(options: OptionLookup): Credentials = _credential
 }
 
-final case class UserServiceAccountMode(override val name: String, scopes: java.util.List[String]) extends GoogleAuthMode {
+final case class UserServiceAccountMode(override val name: String, scopes: java.util.List[String]) extends GoogleAuthMode with ServiceAccountish {
   private def extractServiceAccount(options: OptionLookup): String = {
     extract(options, UserServiceAccountKey)
   }
@@ -174,9 +183,13 @@ final case class UserServiceAccountMode(override val name: String, scopes: java.
     ()
   }
 
+  override protected def jsonCredentialStream(options: OptionLookup): InputStream = {
+    new ByteArrayInputStream(extractServiceAccount(options).getBytes("UTF-8"))
+  }
+
   override def credential(options: OptionLookup): Credentials = {
     ServiceAccountCredentials
-      .fromStream(new ByteArrayInputStream(extractServiceAccount(options).getBytes("UTF-8")))
+      .fromStream(jsonCredentialStream(options))
       .createScoped(scopes)
   }
 }
@@ -199,6 +212,8 @@ final case class UserMode(override val name: String,
   }
 
   override def credential(options: OptionLookup): Credentials = _credential
+
+  override def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = ???
 }
 
 object ApplicationDefaultMode {
@@ -207,6 +222,8 @@ object ApplicationDefaultMode {
 
 final case class ApplicationDefaultMode(name: String) extends GoogleAuthMode {
   override def credential(options: OptionLookup): Credentials = ApplicationDefaultMode._credential
+
+  override def apiClientGoogleCredential(unused: OptionLookup): GoogleCredential = GoogleCredential.getApplicationDefault(httpTransport, jsonFactory)
 }
 
 final case class RefreshTokenMode(name: String,
@@ -239,6 +256,8 @@ final case class RefreshTokenMode(name: String,
         .build()
     )
   }
+
+  override def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = ???
 }
 
 sealed trait ClientSecrets {

@@ -32,4 +32,6 @@ abstract class PipelinesApiFactoryInterface {
   final def fromCredentials(credentials: Credentials): PipelinesApiRequestFactory = build(credentials |> httpRequestInitializerFromCredentials)
   
   protected def build(httpRequestInitializer: HttpRequestInitializer): PipelinesApiRequestFactory
+
+  def usesEncryptedDocker: Boolean
 }

@@ -4,7 +4,6 @@ import akka.http.scaladsl.model.ContentTypes
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount, Secret}
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionBuilder.Labels._
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionFlag.ActionFlag
-import cromwell.cloudsupport.gcp.auth.GoogleAuthMode
 import mouse.all._
 
 import scala.collection.JavaConverters._
@@ -53,12 +52,14 @@ object ActionBuilder {
                  scriptContainerPath: String,
                  mounts: List[Mount],
                  jobShell: String,
-                 credential: Option[String]): Action = {
-    val secret = credential.map({ c =>
-      new Secret()
-        .setKeyName(GoogleAuthMode.keyName)
-        .setCipherText(c)
-    })
+                 dockerEncryptionKeyName: Option[String],
+                 encryptedDockerCredentials: Option[String]): Action = {
+    val secret = for {
+      cred <- encryptedDockerCredentials
+      key <- dockerEncryptionKeyName
+    } yield new Secret().setKeyName(key).setCipherText(cred)
+
+
     new Action()
       .setImageUri(docker)
       .setCommands(List(jobShell, scriptContainerPath).asJava)
