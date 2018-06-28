@@ -67,13 +67,17 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
       userServiceAccountAuth orElse encryptionAuthFromConfig
     }
 
-    val unencrypted = pipelinesConfiguration.dockerCredentials.map { dockerCreds =>
-      val Array(username, password) = new String(Base64.decodeBase64(dockerCreds.token)).split(':')
-      JsObject(
-        Map(
-          "username" -> JsString(username),
-          "password" -> JsString(password)
-        )).compactPrint
+    val unencrypted: Option[String] = pipelinesConfiguration.dockerCredentials.flatMap { dockerCreds =>
+      new String(Base64.decodeBase64(dockerCreds.token)).split(':') match {
+        case Array(username, password) =>
+          // unencrypted tokens are base64-encoded username:password
+          Option(JsObject(
+            Map(
+              "username" -> JsString(username),
+              "password" -> JsString(password)
+            )).compactPrint)
+        case _ => throw new RuntimeException(s"provided dockerhub token '${dockerCreds.token}' is not a base64-encoded username:password")
+      }
     }
 
     for {

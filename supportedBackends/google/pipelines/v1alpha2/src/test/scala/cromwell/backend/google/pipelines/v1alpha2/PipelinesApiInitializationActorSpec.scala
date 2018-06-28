@@ -134,6 +134,7 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
 
     val authJsonOption = actor.generateAuthJson(flattenAuthOptions(jesConfiguration.dockerCredentials, None), false)
     authJsonOption shouldNot be(empty)
+    // dXNlcm5hbWU6cGFzc3dvcmQK is base64-encoded username:password
     authJsonOption.get should be(
       normalize(
         """
@@ -141,7 +142,7 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |    "auths": {
           |        "docker": {
           |            "account": "my@docker.account",
-          |            "token": "mydockertoken"
+          |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        }
           |    }
           |}
@@ -194,7 +195,7 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |    "auths": {
           |        "docker": {
           |            "account": "my@docker.account",
-          |            "token": "mydockertoken"
+          |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        },
           |        "boto": {
           |            "client_id": "myclientid",
@@ -225,7 +226,7 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |    "auths": {
           |        "docker": {
           |            "account": "my@docker.account",
-          |            "token": "mydockertoken"
+          |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        },
           |        "boto": {
           |            "client_id": "myclientid",

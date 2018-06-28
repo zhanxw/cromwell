@@ -162,7 +162,7 @@ class AwsBatchInitializationActorSpec extends TestKitSuite("AwsBatchInitializati
     """
       |dockerhub {
       |  account = "my@docker.account"
-      |  token = "mydockertoken"
+      |  token = "dXNlcm5hbWU6cGFzc3dvcmQK"
       |}
       | """.stripMargin))
 
