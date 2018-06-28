@@ -35,6 +35,7 @@ object GoogleAuthMode {
 
   val RefreshTokenOptionKey = "refresh_token"
   val UserServiceAccountKey = "user_service_account_json"
+  val DockerCredentialsEncryptionKeyNameKey = "docker_credentials_key_name"
 
   val GcsScopes = List(
     StorageScopes.DEVSTORAGE_FULL_CONTROL,

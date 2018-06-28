@@ -6,9 +6,12 @@ import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory
 import cromwell.backend.standard.{StandardInitializationActor, StandardInitializationActorParams, StandardValidatedRuntimeAttributesBuilder}
 import cromwell.backend.{BackendConfigurationDescriptor, BackendInitializationData, BackendWorkflowDescriptor}
 import cromwell.core.Dispatcher
+import cromwell.cloudsupport.gcp.auth.{GoogleAuthMode, UserServiceAccountMode}
 import cromwell.core.io.AsyncIoActorClient
 import cromwell.filesystems.gcs.GoogleUtil._
 import cromwell.filesystems.gcs.batch.GcsBatchCommandBuilder
+import org.apache.commons.codec.binary.Base64
+import spray.json.{JsObject, JsString}
 import wom.graph.CommandCallNode
 
 import scala.concurrent.Future
@@ -29,37 +32,75 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
   extends StandardInitializationActor(pipelinesParams) with AsyncIoActorClient {
 
   override lazy val ioActor = pipelinesParams.ioActor
-  protected val jesConfiguration = pipelinesParams.jesConfiguration
+  protected val pipelinesConfiguration = pipelinesParams.jesConfiguration
   protected val workflowOptions = workflowDescriptor.workflowOptions
   private lazy val ioEc = context.system.dispatchers.lookup(Dispatcher.IoDispatcher)
 
   override lazy val runtimeAttributesBuilder: StandardValidatedRuntimeAttributesBuilder =
-    PipelinesApiRuntimeAttributes.runtimeAttributesBuilder(jesConfiguration)
+    PipelinesApiRuntimeAttributes.runtimeAttributesBuilder(pipelinesConfiguration)
 
   // Credentials object for the GCS API
   private lazy val gcsCredentials: Future[Credentials] =
-    jesConfiguration.jesAttributes.auths.gcs.retryCredential(workflowOptions)
+    pipelinesConfiguration.jesAttributes.auths.gcs.retryCredential(workflowOptions)
 
   // Credentials object for the Genomics API
   private lazy val genomicsCredentials: Future[Credentials] =
-    jesConfiguration.jesAttributes.auths.genomics.retryCredential(workflowOptions)
+    pipelinesConfiguration.jesAttributes.auths.genomics.retryCredential(workflowOptions)
 
   // Genomics object to access the Genomics API
   private lazy val genomics: Future[PipelinesApiRequestFactory] = {
-    genomicsCredentials map jesConfiguration.genomicsFactory.fromCredentials
+    genomicsCredentials map pipelinesConfiguration.genomicsFactory.fromCredentials
+  }
+
+  val privateDockerEncryptionKeyName: Option[String] = {
+    val optionsEncryptionKey = workflowOptions.get(GoogleAuthMode.DockerCredentialsEncryptionKeyNameKey).toOption
+    optionsEncryptionKey.orElse(pipelinesConfiguration.dockerEncryptionKeyName)
+  }
+
+  val privateDockerEncryptedToken: Option[String] = {
+    val effectiveAuth: Option[GoogleAuthMode] = {
+      val userServiceAccountAuth = pipelinesConfiguration.googleConfig.authsByName.values collectFirst { case u: UserServiceAccountMode => u }
+      // If there's no user service account auth fall back to an auth specified in config.
+      def encryptionAuthFromConfig: Option[GoogleAuthMode] = pipelinesConfiguration.dockerEncryptionAuthName.flatMap { name =>
+        pipelinesConfiguration.googleConfig.auth(name).toOption
+      }
+      userServiceAccountAuth orElse encryptionAuthFromConfig
+    }
+
+    val unencrypted = pipelinesConfiguration.dockerCredentials.map { dockerCreds =>
+      val Array(username, password) = new String(Base64.decodeBase64(dockerCreds.token)).split(':')
+      JsObject(
+        Map(
+          "username" -> JsString(username),
+          "password" -> JsString(password)
+        )).compactPrint
+    }
+
+    for {
+      plain <- unencrypted
+      auth <- effectiveAuth
+      key <- privateDockerEncryptionKeyName
+    } yield GoogleAuthMode.encryptKms(key, auth.apiClientGoogleCredential(identity), plain)
   }
 
   override lazy val workflowPaths: Future[PipelinesApiWorkflowPaths] = for {
     gcsCred <- gcsCredentials
     genomicsCred <- genomicsCredentials
     validatedPathBuilders <- pathBuilders
-  } yield new PipelinesApiWorkflowPaths(workflowDescriptor, gcsCred, genomicsCred, jesConfiguration, validatedPathBuilders)(ioEc)
+  } yield new PipelinesApiWorkflowPaths(workflowDescriptor, gcsCred, genomicsCred, pipelinesConfiguration, validatedPathBuilders)(ioEc)
 
   override lazy val initializationData: Future[PipelinesApiBackendInitializationData] = for {
     jesWorkflowPaths <- workflowPaths
     gcsCreds <- gcsCredentials
     genomicsFactory <- genomics
-  } yield PipelinesApiBackendInitializationData(jesWorkflowPaths, runtimeAttributesBuilder, jesConfiguration, gcsCreds, genomicsFactory)
+  } yield PipelinesApiBackendInitializationData(
+    workflowPaths = jesWorkflowPaths,
+    runtimeAttributesBuilder = runtimeAttributesBuilder,
+    jesConfiguration = pipelinesConfiguration,
+    gcsCredentials = gcsCreds,
+    genomicsRequestFactory = genomicsFactory,
+    privateDockerEncryptionKeyName = privateDockerEncryptionKeyName,
+    privateDockerEncryptedToken = privateDockerEncryptedToken)
 
   override def beforeAll(): Future[Option[BackendInitializationData]] = {
     for {

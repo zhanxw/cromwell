@@ -10,7 +10,7 @@ import cromwell.cloudsupport.gcp.GoogleConfiguration
 
 class PipelinesApiConfigurationSpec extends FlatSpec with Matchers with TableDrivenPropertyChecks with BeforeAndAfterAll {
 
-  behavior of "JesConfigurationSpec"
+  behavior of "PipelinesApiConfigurationSpec"
 
   val mockFile = DefaultPathBuilder.createTempFile()
 

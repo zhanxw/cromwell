@@ -386,23 +386,30 @@ class PipelinesApiAsyncBackendJobExecutionActor(override val standardParams: Sta
   }
 
   private def createPipelineParameters(inputOutputParameters: InputOutputParameters): CreatePipelineParameters = {
-    CreatePipelineParameters(
-      jobDescriptor = jobDescriptor,
-      runtimeAttributes = runtimeAttributes,
-      dockerImage = jobDockerImage,
-      cloudWorkflowRoot = workflowPaths.workflowRoot,
-      cloudCallRoot = callRootPath,
-      commandScriptContainerPath = cmdInput.containerPath,
-      logGcsPath = jesLogPath,
-      inputOutputParameters,
-      googleProject(jobDescriptor.workflowDescriptor),
-      computeServiceAccount(jobDescriptor.workflowDescriptor),
-      backendLabels,
-      preemptible,
-      pipelinesConfiguration.jobShell,
-      pipelinesConfiguration.dockerEncryptionKeyName,
-      pipelinesConfiguration.encryptedDockerCredentials
-    )
+    standardParams.backendInitializationDataOption match {
+      case Some(data: PipelinesApiBackendInitializationData) =>
+        CreatePipelineParameters(
+          jobDescriptor = jobDescriptor,
+          runtimeAttributes = runtimeAttributes,
+          dockerImage = jobDockerImage,
+          cloudWorkflowRoot = workflowPaths.workflowRoot,
+          cloudCallRoot = callRootPath,
+          commandScriptContainerPath = cmdInput.containerPath,
+          logGcsPath = jesLogPath,
+          inputOutputParameters,
+          googleProject(jobDescriptor.workflowDescriptor),
+          computeServiceAccount(jobDescriptor.workflowDescriptor),
+          backendLabels,
+          preemptible,
+          pipelinesConfiguration.jobShell,
+          data.privateDockerEncryptionKeyName,
+          data.privateDockerEncryptedToken
+        )
+      case Some(other) =>
+        throw new RuntimeException(s"Unexpected initialization data: $other")
+      case None =>
+        throw new RuntimeException("No pipelines API backend initialization data found?")
+    }
   }
 
   override def isFatal(throwable: Throwable): Boolean = super.isFatal(throwable) || isFatalJesException(throwable)
