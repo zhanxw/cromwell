@@ -59,7 +59,14 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
 
   val privateDockerEncryptedToken: Option[String] = {
     val effectiveAuth: Option[GoogleAuthMode] = {
-      val userServiceAccountAuth = pipelinesConfiguration.googleConfig.authsByName.values collectFirst { case u: UserServiceAccountMode => u }
+      // Roll with the user service account if a user service account value is provided in the workflow options and there's
+      // a user service account auth in the list of auths.
+      // TODO is it okay that this would silently ignore user auths if there isn't one defined in the config?
+      val userServiceAccountAuth: Option[GoogleAuthMode] = for {
+        _ <- workflowOptions.get(GoogleAuthMode.UserServiceAccountKey).toOption
+        usaAuth <- pipelinesConfiguration.googleConfig.authsByName.values collectFirst { case u: UserServiceAccountMode => u }
+      } yield usaAuth
+
       // If there's no user service account auth fall back to an auth specified in config.
       def encryptionAuthFromConfig: Option[GoogleAuthMode] = pipelinesConfiguration.dockerEncryptionAuthName.flatMap { name =>
         pipelinesConfiguration.googleConfig.auth(name).toOption
