@@ -17,7 +17,7 @@ trait PipelinesApiJobCachingActorHelper extends StandardCachingActorHelper {
     backendInitializationDataAs[PipelinesApiBackendInitializationData]
   }
 
-  lazy val pipelinesConfiguration: PipelinesApiConfiguration = initializationData.jesConfiguration
+  lazy val pipelinesConfiguration: PipelinesApiConfiguration = initializationData.papiConfiguration
 
   lazy val pipelinesApiCallPaths: PipelinesApiJobPaths = jobPaths.asInstanceOf[PipelinesApiJobPaths]
 

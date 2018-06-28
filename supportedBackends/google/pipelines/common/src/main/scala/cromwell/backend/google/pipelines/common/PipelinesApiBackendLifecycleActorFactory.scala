@@ -23,7 +23,7 @@ abstract class PipelinesApiBackendLifecycleActorFactory(override val name: Strin
 
   protected val googleConfig = GoogleConfiguration(configurationDescriptor.globalConfig)
 
-  protected val jesAttributes = PipelinesApiAttributes(googleConfig, configurationDescriptor.backendConfig)
+  protected val papiAttributes = PipelinesApiAttributes(googleConfig, configurationDescriptor.backendConfig)
 
   override lazy val initializationActorClass: Class[_ <: StandardInitializationActor] = classOf[PipelinesApiInitializationActor]
 
@@ -44,9 +44,9 @@ abstract class PipelinesApiBackendLifecycleActorFactory(override val name: Strin
                                                jobExecutionMap: JobExecutionMap, workflowOutputs: CallOutputs,
                                                initializationDataOption: Option[BackendInitializationData]):
   StandardFinalizationActorParams = {
-    // The `JesInitializationActor` will only return a non-`Empty` `JesBackendInitializationData` from a successful `beforeAll`
+    // The `PipelinesApiInitializationActor` will only return a non-`Empty` `PipelinesApiBackendInitializationData` from a successful `beforeAll`
     // invocation.  HOWEVER, the finalization actor is created regardless of whether workflow initialization was successful
-    // or not.  So the finalization actor must be able to handle an empty `JesBackendInitializationData` option, and there is no
+    // or not.  So the finalization actor must be able to handle an empty `PipelinesApiBackendInitializationData` option, and there is no
     // `.get` on the initialization data as there is with the execution or cache hit copying actor methods.
     PipelinesApiFinalizationActorParams(workflowDescriptor, ioActor, calls, jesConfiguration, jobExecutionMap, workflowOutputs,
       initializationDataOption)
@@ -60,9 +60,9 @@ abstract class PipelinesApiBackendLifecycleActorFactory(override val name: Strin
 
   override def dockerHashCredentials(initializationData: Option[BackendInitializationData]) = {
     Try(BackendInitializationData.as[PipelinesApiBackendInitializationData](initializationData)) match {
-      case Success(jesData) =>
-        val maybeDockerHubCredentials = jesData.jesConfiguration.dockerCredentials
-        val googleCredentials = Option(jesData.gcsCredentials)
+      case Success(papiData) =>
+        val maybeDockerHubCredentials = papiData.papiConfiguration.dockerCredentials
+        val googleCredentials = Option(papiData.gcsCredentials)
         List(maybeDockerHubCredentials, googleCredentials).flatten
       case _ => List.empty[Any]
     }

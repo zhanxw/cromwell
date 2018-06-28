@@ -91,7 +91,7 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
       plain <- unencrypted
       auth <- effectiveAuth
       key <- privateDockerEncryptionKeyName
-    } yield GoogleAuthMode.encryptKms(key, auth.apiClientGoogleCredential(identity), plain)
+    } yield GoogleAuthMode.encryptKms(key, auth.apiClientGoogleCredential(k => workflowOptions.get(k).get), plain)
   }
 
   override lazy val workflowPaths: Future[PipelinesApiWorkflowPaths] = for {
@@ -107,7 +107,7 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
   } yield PipelinesApiBackendInitializationData(
     workflowPaths = jesWorkflowPaths,
     runtimeAttributesBuilder = runtimeAttributesBuilder,
-    jesConfiguration = pipelinesConfiguration,
+    papiConfiguration = pipelinesConfiguration,
     gcsCredentials = gcsCreds,
     genomicsRequestFactory = genomicsFactory,
     privateDockerEncryptionKeyName = privateDockerEncryptionKeyName,

@@ -8,7 +8,7 @@ case class PipelinesApiBackendInitializationData
 (
   override val workflowPaths: PipelinesApiWorkflowPaths,
   override val runtimeAttributesBuilder: StandardValidatedRuntimeAttributesBuilder,
-  jesConfiguration: PipelinesApiConfiguration,
+  papiConfiguration: PipelinesApiConfiguration,
   gcsCredentials: Credentials,
   genomicsRequestFactory: PipelinesApiRequestFactory,
   privateDockerEncryptionKeyName: Option[String],
