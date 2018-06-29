@@ -123,7 +123,6 @@ class PipelinesApiConfigurationSpec extends FlatSpec with Matchers with TableDri
   it should "have correct docker" in {
     val dockerConf = new PipelinesApiConfiguration(BackendConfigurationDescriptor(backendConfig, globalConfig), genomicsFactory, googleConfiguration, jesAttributes).dockerCredentials
     dockerConf shouldBe defined
-    dockerConf.get.account shouldBe "dockerAccount"
     dockerConf.get.token shouldBe "dockerToken"
   }
 

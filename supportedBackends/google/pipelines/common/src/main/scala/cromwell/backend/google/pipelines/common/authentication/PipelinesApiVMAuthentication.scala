@@ -38,7 +38,7 @@ object PipelinesApiDockerCredentials {
       val authName = dockerCredentials.authName.getOrElse(throw new RuntimeException("KMS Encryption key defined for private Docker but no auth specified"))
       googleConfig.auth(authName) match {
         case Invalid(e) => throw new RuntimeException("Error creating GoogleAuthMode: " + e.toList.mkString(", "))
-        case Valid(auth) => auth.apiClientGoogleCredential(identity) // FIXME move everything around for per-workflow with lookup into workflow options
+        case Valid(auth) => auth.apiClientGoogleCredential(identity)
       }
     }
 

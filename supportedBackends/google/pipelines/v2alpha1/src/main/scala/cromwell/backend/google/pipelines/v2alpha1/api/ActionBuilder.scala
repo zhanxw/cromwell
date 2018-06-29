@@ -2,6 +2,7 @@ package cromwell.backend.google.pipelines.v2alpha1.api
 
 import akka.http.scaladsl.model.ContentTypes
 import com.google.api.services.genomics.v2alpha1.model.{Action, Mount, Secret}
+import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineDockerKeyAndToken
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionBuilder.Labels._
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionFlag.ActionFlag
 import mouse.all._
@@ -52,12 +53,8 @@ object ActionBuilder {
                  scriptContainerPath: String,
                  mounts: List[Mount],
                  jobShell: String,
-                 dockerEncryptionKeyName: Option[String],
-                 encryptedDockerCredentials: Option[String]): Action = {
-    val secret = for {
-      cred <- encryptedDockerCredentials
-      key <- dockerEncryptionKeyName
-    } yield new Secret().setKeyName(key).setCipherText(cred)
+                 privateDockerKeyAndToken: Option[CreatePipelineDockerKeyAndToken]): Action = {
+    val secret = privateDockerKeyAndToken map { kt => new Secret().setKeyName(kt.key).setCipherText(kt.encryptedToken) }
 
 
     new Action()

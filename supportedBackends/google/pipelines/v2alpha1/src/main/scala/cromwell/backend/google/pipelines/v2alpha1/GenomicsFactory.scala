@@ -54,8 +54,7 @@ case class GenomicsFactory(applicationName: String, authMode: GoogleAuthMode, en
         createPipelineParameters.commandScriptContainerPath.pathAsString,
         mounts,
         createPipelineParameters.jobShell,
-        createPipelineParameters.privateDockerEncryptionKeyName,
-        createPipelineParameters.privateDockerEncryptedToken
+        createPipelineParameters.privateDockerKeyAndEncryptedToken
       )
       
       val allActions = localization ++ List(userAction) ++ deLocalization

@@ -66,10 +66,7 @@ object GoogleAuthMode {
   }
 
   def encryptKms(keyName: String, credential: GoogleCredential, plainText: String) = {
-    import com.google.api.client.googleapis.auth.oauth2.GoogleCredential
     import com.google.api.services.cloudkms.v1.CloudKMSScopes
-
-    val credential = GoogleCredential.getApplicationDefault(httpTransport, jsonFactory)
 
     // Depending on the environment that provides the default credentials (e.g. Compute Engine, App
     // Engine), the credentials may require us to specify the scopes we need explicitly.

@@ -11,7 +11,7 @@ class PipelinesApiLifecycleActorFactory(name: String, configurationDescriptor: B
   private val genomicsFactory = GenomicsFactory(googleConfig.applicationName, papiAttributes.auths.genomics, papiAttributes.endpointUrl)
   override protected val jesConfiguration = new PipelinesApiConfiguration(configurationDescriptor, genomicsFactory, googleConfig, papiAttributes)
   override def requiredBackendSingletonActor(serviceRegistryActor: ActorRef) = {
-    implicit val batchHandler = new RequestHandler(googleConfig.applicationName, jesAttributes.endpointUrl)
+    implicit val batchHandler = new RequestHandler(googleConfig.applicationName, papiAttributes.endpointUrl)
     PipelinesApiBackendSingletonActor.props(jesConfiguration.qps, jesConfiguration.papiRequestWorkers, serviceRegistryActor)
   }
 
