@@ -61,7 +61,8 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
     val effectiveAuth: Option[GoogleAuthMode] = {
       // Roll with the user service account if a user service account value is provided in the workflow options and there's
       // a user service account auth in the list of auths.
-      // TODO is it okay that this would silently ignore user auths if there isn't one defined in the config?
+      // TODO is it okay that this would silently ignore user auths if there isn't one defined in the config? This doesn't
+      // seem great but it's effectively what the existing code around user service accounts appears to be doing.
       val userServiceAccountAuth: Option[GoogleAuthMode] = for {
         _ <- workflowOptions.get(GoogleAuthMode.UserServiceAccountKey).toOption
         usaAuth <- pipelinesConfiguration.googleConfig.authsByName.values collectFirst { case u: UserServiceAccountMode => u }
