@@ -177,7 +177,8 @@ Cromwell will use this authorization for encrypting the Google KMS key.
 The equivalents of `key-name` and `auth` can also be specified in workflow options which will take
 precedence over values specified in configuration. In workflow options the key `docker_credentials_key_name` corresponds to the config key `key-name`.
 If a `user_service_account_json` value is specified in workflow options that will take precedence over the value associated with
-the config `auth` value. 
+the config `auth` value. If either `docker_credentials_key_name` or `user_service_account_json` is provided in workflow options
+then the corresponding private Docker configuration value is not required.
 
 Example PAPI v2 workflow options for specifying private Docker configuration: 
 

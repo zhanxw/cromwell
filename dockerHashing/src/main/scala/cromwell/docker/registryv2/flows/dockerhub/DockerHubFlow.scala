@@ -33,7 +33,7 @@ class DockerHubFlow(httpClientFlow: HttpDockerFlow)(implicit ec: ExecutionContex
     */
    def buildTokenRequestHeaders(dockerHashContext: DockerHashContext) = {
     dockerHashContext.credentials collect {
-      case DockerCredentials(_, token) => 
+      case DockerCredentials(token) =>
         Authorization(BasicHttpCredentials(token))
     }
   }

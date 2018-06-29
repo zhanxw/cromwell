@@ -43,7 +43,6 @@ object PipelinesApiDockerCredentials {
     }
 
     new PipelinesApiDockerCredentials(
-      account = dockerCredentials.account,
       token = dockerCredentials.token,
       keyName = dockerCredentials.keyName,
       authName = dockerCredentials.authName,
@@ -54,16 +53,14 @@ object PipelinesApiDockerCredentials {
 /**
  * Authentication information to pull docker images as the user.
  */
-case class PipelinesApiDockerCredentials(override val account: String,
-                                         override val token: String,
+case class PipelinesApiDockerCredentials(override val token: String,
                                          override val keyName: Option[String],
                                          override val authName: Option[String],
                                          credential: Option[GoogleCredential])
-  extends DockerCredentials(account = account, token = token, keyName = keyName, authName = authName) with PipelinesApiAuthObject {
+  extends DockerCredentials(token = token, keyName = keyName, authName = authName) with PipelinesApiAuthObject {
 
   override val context = "docker"
   override val map = Map(
-    "account" -> JsString(account),
     "token" -> JsString(token)
   )
 }

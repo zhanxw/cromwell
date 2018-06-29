@@ -141,7 +141,6 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |{
           |    "auths": {
           |        "docker": {
-          |            "account": "my@docker.account",
           |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        }
           |    }
@@ -194,7 +193,6 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |{
           |    "auths": {
           |        "docker": {
-          |            "account": "my@docker.account",
           |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        },
           |        "boto": {
@@ -225,7 +223,6 @@ class PipelinesApiInitializationActorSpec extends TestKitSuite("PipelinesApiInit
           |{
           |    "auths": {
           |        "docker": {
-          |            "account": "my@docker.account",
           |            "token": "dXNlcm5hbWU6cGFzc3dvcmQK"
           |        },
           |        "boto": {
