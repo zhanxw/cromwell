@@ -108,7 +108,7 @@ sealed trait GoogleAuthMode {
     * All traits in this file are sealed, all classes final, meaning things like Mockito or other java/scala overrides
     * cannot work.
     */
-  private[auth] var credentialValidation: (Credentials => Unit) = credentials => credentials.refresh()
+  private[auth] var credentialValidation: Credentials => Unit = credentials => credentials.refresh()
 
   protected def validateCredential(credential: Credentials) = {
     Try(credentialValidation(credential)) match {
@@ -117,7 +117,7 @@ sealed trait GoogleAuthMode {
     }
   }
 
-  def apiClientGoogleCredential(options: OptionLookup): GoogleCredential
+  def apiClientGoogleCredential(options: OptionLookup): Option[GoogleCredential] = None
 }
 
 case object MockAuthMode extends GoogleAuthMode {
@@ -125,7 +125,7 @@ case object MockAuthMode extends GoogleAuthMode {
 
   override def credential(options: OptionLookup): Credentials = NoCredentials.getInstance
 
-  override def apiClientGoogleCredential(options: OptionLookup) = new MockGoogleCredential.Builder().build()
+  override def apiClientGoogleCredential(options: OptionLookup) = Option(new MockGoogleCredential.Builder().build())
 }
 
 object ServiceAccountMode {
@@ -140,19 +140,19 @@ object ServiceAccountMode {
 
 }
 
-trait ServiceAccountish {
-  protected def jsonCredentialStream(options: OptionLookup): InputStream
+trait HasApiClientGoogleCredentialStream { self: GoogleAuthMode =>
+  protected def credentialStream(options: OptionLookup): InputStream
 
-  def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = GoogleCredential.fromStream(jsonCredentialStream(options))
+  override def apiClientGoogleCredential(options: OptionLookup): Option[GoogleCredential] = Option(GoogleCredential.fromStream(credentialStream(options)))
 }
 
 final case class ServiceAccountMode(override val name: String,
                                     fileFormat: CredentialFileFormat,
-                                    scopes: java.util.List[String]) extends GoogleAuthMode with ServiceAccountish {
+                                    scopes: java.util.List[String]) extends GoogleAuthMode with HasApiClientGoogleCredentialStream {
   private val credentialsFile = File(fileFormat.file)
   checkReadable(credentialsFile)
 
-  override protected def jsonCredentialStream(options: OptionLookup): InputStream = credentialsFile.newInputStream
+  override protected def credentialStream(options: OptionLookup): InputStream = credentialsFile.newInputStream
 
   private lazy val _credential: Credentials = {
     val serviceAccount = fileFormat match {
@@ -171,7 +171,7 @@ final case class ServiceAccountMode(override val name: String,
   override def credential(options: OptionLookup): Credentials = _credential
 }
 
-final case class UserServiceAccountMode(override val name: String, scopes: java.util.List[String]) extends GoogleAuthMode with ServiceAccountish {
+final case class UserServiceAccountMode(override val name: String, scopes: java.util.List[String]) extends GoogleAuthMode with HasApiClientGoogleCredentialStream {
   private def extractServiceAccount(options: OptionLookup): String = {
     extract(options, UserServiceAccountKey)
   }
@@ -181,13 +181,13 @@ final case class UserServiceAccountMode(override val name: String, scopes: java.
     ()
   }
 
-  override protected def jsonCredentialStream(options: OptionLookup): InputStream = {
+  override protected def credentialStream(options: OptionLookup): InputStream = {
     new ByteArrayInputStream(extractServiceAccount(options).getBytes("UTF-8"))
   }
 
   override def credential(options: OptionLookup): Credentials = {
     ServiceAccountCredentials
-      .fromStream(jsonCredentialStream(options))
+      .fromStream(credentialStream(options))
       .createScoped(scopes)
   }
 }
@@ -210,8 +210,6 @@ final case class UserMode(override val name: String,
   }
 
   override def credential(options: OptionLookup): Credentials = _credential
-
-  override def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = ???
 }
 
 object ApplicationDefaultMode {
@@ -221,7 +219,7 @@ object ApplicationDefaultMode {
 final case class ApplicationDefaultMode(name: String) extends GoogleAuthMode {
   override def credential(options: OptionLookup): Credentials = ApplicationDefaultMode._credential
 
-  override def apiClientGoogleCredential(unused: OptionLookup): GoogleCredential = GoogleCredential.getApplicationDefault(httpTransport, jsonFactory)
+  override def apiClientGoogleCredential(unused: OptionLookup): Option[GoogleCredential] = Option(GoogleCredential.getApplicationDefault(httpTransport, jsonFactory))
 }
 
 final case class RefreshTokenMode(name: String,
@@ -254,8 +252,6 @@ final case class RefreshTokenMode(name: String,
         .build()
     )
   }
-
-  override def apiClientGoogleCredential(options: OptionLookup): GoogleCredential = ???
 }
 
 sealed trait ClientSecrets {

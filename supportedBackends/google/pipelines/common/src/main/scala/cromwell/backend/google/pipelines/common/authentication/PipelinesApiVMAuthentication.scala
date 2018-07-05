@@ -34,7 +34,7 @@ object PipelinesApiDockerCredentials {
 
   def apply(dockerCredentials: DockerCredentials, googleConfig: GoogleConfiguration): PipelinesApiDockerCredentials = {
     // If there's an encryption key defined there must be a valid auth defined to encrypt it.
-    val credential = dockerCredentials.keyName map { _ =>
+    val credential = dockerCredentials.keyName flatMap { _ =>
       val authName = dockerCredentials.authName.getOrElse(throw new RuntimeException("KMS Encryption key defined for private Docker but no auth specified"))
       googleConfig.auth(authName) match {
         case Invalid(e) => throw new RuntimeException("Error creating GoogleAuthMode: " + e.toList.mkString(", "))
