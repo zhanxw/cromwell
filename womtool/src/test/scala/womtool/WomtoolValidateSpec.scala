@@ -16,6 +16,7 @@ class WomtoolValidateSpec extends FlatSpec with Matchers {
     languageVersions.isEmpty should be(false)
   }
 
+  // The filterNot(_.contains(".DS")) stuff prevents Mac 'Desktop Services' hidden directories from accidentally being picked up:
   languageVersions.filterNot(f => f.name.contains(".DS")) foreach { versionDirectory =>
     val versionName = versionDirectory.name
 
@@ -36,7 +37,7 @@ class WomtoolValidateSpec extends FlatSpec with Matchers {
       it should s"run $versionName test '$ignoredCase'" ignore {}
     }
 
-    // The filterNot(_.contains(".DS")) stuff prevents intellij hidden directories from accidentally being picked up:
+    // The filterNot(_.contains(".DS")) stuff prevents Mac 'Desktop Services' hidden directories from accidentally being picked up:
     Option(validTestCases.toFile.list).toList.flatten.filterNot(_.contains(".DS")) foreach { validCase =>
       val inputsFile = ifExists(validTestCases.resolve(validCase).resolve(validCase + ".inputs.json").toFile)
       val withInputsAddition = if (inputsFile.isDefined) " and inputs file" else ""
@@ -51,7 +52,7 @@ class WomtoolValidateSpec extends FlatSpec with Matchers {
       }
     }
 
-    // The filterNot(_.contains(".DS")) stuff prevents intellij hidden directories from accidentally being picked up:
+    // The filterNot(_.contains(".DS")) stuff prevents Mac 'Desktop Services' hidden directories from accidentally being picked up:
     Option(invalidTestCases.toFile.list).toList.flatten.filterNot(_.contains(".DS")) foreach { invalidCase =>
       val inputsFile = ifExists(invalidTestCases.resolve(invalidCase).resolve(invalidCase + ".inputs.json").toFile)
       val withInputsAddition = if (inputsFile.isDefined) " and inputs file" else ""
