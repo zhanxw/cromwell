@@ -168,7 +168,7 @@ backend {
 ```
 
 `key-name` is the name of the Google KMS key Cromwell should use for encrypting the Docker `token` before including it
-in the PAPI job execution request. This `key-name` will also be included in the PAPI job execution 
+in the PAPI job execution request. This `key-name` will also be included in the PAPI job execution
 request and will be used by PAPI to decrypt the Docker token to `docker pull` the private Docker image.
  
 `auth` is a reference to the name of an authorization in the `auths` block of Cromwell's `google` config.
@@ -193,14 +193,14 @@ Example PAPI v2 workflow options for specifying private Docker configuration:
 ```
 
 Important note for the `user_service_account_json` workflow option: an auth of type `user_service_account` must be defined in 
-Cromwell's `google.auths` stanza; more details in the `User Service Account` section above. 
+Cromwell's `google.auths` stanza; more details in the `User Service Account` section above.
 
 If any of the three private Docker configuration values of key name, auth, or Docker token are missing, Cromwell will not perform a `docker login`. If the 
 Docker image to be pulled is not public the `docker pull` will fail which will cause the overall job to fail.
 
 If using either the `user_service_account_json` or `docker_credentials_key_name` workflow options it is advisable to add
 these to the `workflow-options.encrypted-fields` list in Cromwell configuration.
- 
+
 
 **Monitoring**
 

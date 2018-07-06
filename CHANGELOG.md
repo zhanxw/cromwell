@@ -9,9 +9,9 @@ Please read the [relevant documentation](http://cromwell.readthedocs.io/en/devel
 
 ### Private Docker Support on Pipelines API v2
 
-Support for private Docker Hub images is now included in the Google Pipelines API v2 backend. PAPI v2 private Docker support is 
+Support for private Docker Hub images is now included in the Google Pipelines API v2 backend. PAPI v2 private Docker support is
 equivalent to that in PAPI v1 but the configuration differs, please see
-[Docker configuration](http://cromwell.readthedocs.io/en/develop/filesystems/Google#Docker) for more details. 
+[Docker configuration](http://cromwell.readthedocs.io/en/develop/filesystems/Google#Docker) for more details.
 
 ### Updated MySQL client with 8.0 support
 
