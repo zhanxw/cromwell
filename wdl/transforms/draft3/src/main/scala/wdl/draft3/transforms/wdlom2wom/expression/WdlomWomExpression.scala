@@ -1,6 +1,7 @@
 package wdl.draft3.transforms.wdlom2wom.expression
 
 import common.validation.ErrorOr.ErrorOr
+import common.validation.ErrorOr._
 import wdl.draft3.transforms.linking.expression.consumed._
 import wdl.draft3.transforms.linking.expression.files._
 import wdl.draft3.transforms.linking.expression.types._
@@ -43,6 +44,6 @@ final case class WdlomWomExpression private(expressionElement: ExpressionElement
 object WdlomWomExpression {
   def make(expressionElement: ExpressionElement, linkedValues: Map[UnlinkedConsumedValueHook, GeneratedValueHandle]): ErrorOr[WdlomWomExpression] = {
     val candidate = WdlomWomExpression(expressionElement, linkedValues)
-    candidate.evaluatedType map { _ => candidate }
+    candidate.evaluatedType.contextualizeErrors(s"process expression '${candidate.sourceString}'") map { _ => candidate }
   }
 }
