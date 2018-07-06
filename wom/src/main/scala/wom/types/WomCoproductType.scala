@@ -1,10 +1,9 @@
 package wom.types
 import cats.data.NonEmptyList
 import wom.WomExpressionException
-import wom.values.{WomCoproductValue, WomValue}
+import wom.values.WomValue
 
 import scala.util.{Failure, Success, Try}
-import mouse.all._
 
 /**
   * Handles the possibility that a value could be one of the specified types.  At present this is only supported by CWL.
@@ -19,18 +18,14 @@ case class WomCoproductType(types: NonEmptyList[WomType]) extends WomType {
     * the partial function is not defined are assumed to not be convertible to the target type.
     */
   override def coercion: PartialFunction[Any, WomValue] = {
-    case wct@WomCoproductValue(tpe, _) if (tpe.equalsType(this).isSuccess) => wct
-
     //If we can find this type exactly in our coproduct, use that type for the coercion
-    case womValue: WomValue if (types.toList.contains(womValue.womType)) =>
-      val v: Try[WomValue] = womValue.womType.coerceRawValue(womValue)
-      WomCoproductValue(this, v.get)
+    case womValue: WomValue if (types.toList.contains(womValue.womType)) => womValue.womType.coerceRawValue(womValue).get
 
     //If we don't have any information, try to coerce this value one by one, stopping at the first successful try
     case any =>
       val triedToCoerce: Try[WomValue] = types.map(_.coerceRawValue(any)).toList.reduce(_ orElse _)
 
-      triedToCoerce.getOrElse(throw new WomTypeException(s"unable to coerce $any to a member of the set of types ${types.toList.mkString(", ")}")) |> (WomCoproductValue(this, _))
+      triedToCoerce.getOrElse(throw new WomTypeException(s"unable to coerce $any to a member of the set of types ${types.toList.mkString(", ")}"))
   }
 
   def typeExists(tpe: WomType): Try[WomBooleanType.type] =

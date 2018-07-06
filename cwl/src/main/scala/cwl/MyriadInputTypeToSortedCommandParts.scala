@@ -7,7 +7,7 @@ import cwl.command.ParentName
 import shapeless.{Coproduct, Poly1}
 import cats.instances.list._
 import cats.instances.option._
-import wom.values.{WomArray, WomCoproductValue, WomObjectLike, WomOptionalValue, WomValue}
+import wom.values.{WomArray, WomObjectLike, WomOptionalValue, WomValue}
 import cats.syntax.option._
 import cats.syntax.traverse._
 
@@ -109,10 +109,6 @@ object MyriadInputInnerTypeToSortedCommandParts extends Poly1 {
 
   implicit def irs: Aux[InputRecordSchema, CommandPartBuilder] = at[InputRecordSchema] { irs => {
     def go: CommandPartBuilder = {
-
-      //If the value is optional and is supplied, recurse over the value provided
-      case (inputBinding, WomCoproductValue(_, value), sortingKey, hasShellCommandRequirement, expressionLib, schemaDefRequirement) =>
-        go(inputBinding, value, sortingKey, hasShellCommandRequirement, expressionLib, schemaDefRequirement)
 
       //If the value is optional and is supplied, recurse over the value provided
       case (inputBinding, WomOptionalValue(_, Some(value)), sortingKey, hasShellCommandRequirement, expressionLib, schemaDefRequirement) =>

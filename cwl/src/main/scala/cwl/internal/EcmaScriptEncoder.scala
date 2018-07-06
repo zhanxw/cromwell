@@ -52,7 +52,6 @@ class EcmaScriptEncoder(ioFunctionSet: IoFunctionSet) {
       case objectLike: WomObjectLike => objectLike.values.map{
         case (key, innerValue) => (key, encode(innerValue))
       } |> ESObject
-      case WomCoproductValue(_, womValue) => encode(womValue)
       case WomEnumerationValue(_, womValue) => womValue |> ESPrimitive
       case _ => throw new RuntimeException(s"$getClass is unable to encode value: $value")
     }

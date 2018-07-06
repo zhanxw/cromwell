@@ -2,7 +2,7 @@ package wom.types
 
 import cats.data.NonEmptyList
 import org.scalatest.{FlatSpec, Matchers}
-import wom.values.{WomBoolean, WomCoproductValue, WomString}
+import wom.values.{WomBoolean, WomString}
 
 class WomCoproductSpec extends FlatSpec with Matchers {
 
@@ -11,13 +11,13 @@ class WomCoproductSpec extends FlatSpec with Matchers {
   it should "pick the exact type to coerce to" in {
     val wct = WomCoproductType(NonEmptyList.of(WomStringType, WomBooleanType))
 
-    wct.coercion(WomBoolean(true)) shouldBe WomCoproductValue(wct, WomBoolean(true))
+    wct.coercion(WomBoolean(true)) shouldBe WomBoolean(true)
   }
 
   it should "attempt to coerce to expected types in order" in {
     val wct = WomCoproductType(NonEmptyList.of(WomStringType, WomBooleanType))
 
-    wct.coercion(true) shouldBe WomCoproductValue(wct, WomBoolean(true))
-    wct.coercion("true") shouldBe WomCoproductValue(wct, WomString("true"))
+    wct.coercion(true) shouldBe WomBoolean(true)
+    wct.coercion("true") shouldBe WomString("true")
   }
 }
