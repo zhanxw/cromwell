@@ -5,6 +5,7 @@ import com.google.api.services.genomics.v2alpha1.model.{Action, Mount, Secret}
 import cromwell.backend.google.pipelines.common.api.PipelinesApiRequestFactory.CreatePipelineDockerKeyAndToken
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionBuilder.Labels._
 import cromwell.backend.google.pipelines.v2alpha1.api.ActionFlag.ActionFlag
+import cromwell.docker.{DockerImageIdentifier, DockerUtil}
 import mouse.all._
 
 import scala.collection.JavaConverters._
@@ -54,8 +55,15 @@ object ActionBuilder {
                  mounts: List[Mount],
                  jobShell: String,
                  privateDockerKeyAndToken: Option[CreatePipelineDockerKeyAndToken]): Action = {
-    val secret = privateDockerKeyAndToken map { kt => new Secret().setKeyName(kt.key).setCipherText(kt.encryptedToken) }
 
+    val dockerImageIdentifier = DockerImageIdentifier.fromString(docker)
+
+    val secret = for {
+      imageId <- dockerImageIdentifier.toOption
+      if DockerUtil.isValidDockerHubHost(imageId.host)
+      keyAndToken <- privateDockerKeyAndToken
+      s = new Secret().setKeyName(keyAndToken.key).setCipherText(keyAndToken.encryptedToken)
+    } yield s
 
     new Action()
       .setImageUri(docker)
