@@ -95,6 +95,9 @@ package object types {
 
         case a: Sub => a.evaluateType(linkedValues)
 
+        case a: StdoutElement.type => a.evaluateType(linkedValues)
+        case a: StderrElement.type => a.evaluateType(linkedValues)
+
         case other => s"Unable to process ${other.getClass.getSimpleName}: No evaluateType exists for that type.".invalidNel
       }
     }

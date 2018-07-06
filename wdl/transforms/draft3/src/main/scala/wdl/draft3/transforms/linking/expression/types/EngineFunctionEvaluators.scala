@@ -16,6 +16,9 @@ import wdl.draft3.transforms.wdlom2wdl.WdlWriterImpl.expressionElementWriter
 
 object EngineFunctionEvaluators {
 
+  implicit val stdoutFunctionEvaluator: TypeEvaluator[StdoutElement.type] = { (_, _) => WomSingleFileType.validNel }
+  implicit val stderrFunctionEvaluator: TypeEvaluator[StderrElement.type] = { (_, _) => WomSingleFileType.validNel }
+
   implicit val readLinesFunctionEvaluator: TypeEvaluator[ReadLines] = new TypeEvaluator[ReadLines] {
     override def evaluateType(a: ReadLines, linkedValues: Map[UnlinkedConsumedValueHook, GeneratedValueHandle]): ErrorOr[WomType] = {
       validateParamType(a.param, linkedValues, WomSingleFileType).map(_ => WomArrayType(WomStringType))
