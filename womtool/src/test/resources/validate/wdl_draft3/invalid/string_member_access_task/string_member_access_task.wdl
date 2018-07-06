@@ -18,3 +18,14 @@ task string_member_access_output_runtime {
     String out = "~{s}"
   }
 }
+
+task x
+{
+  input {
+    String x = "abc"
+  }
+  command {}
+  output {
+    File y = "${x}".xyz
+  }
+}
