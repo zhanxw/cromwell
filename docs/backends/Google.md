@@ -196,7 +196,10 @@ Important note for the `user_service_account_json` workflow option: an auth of t
 Cromwell's `google.auths` stanza; more details in the `User Service Account` section above. 
 
 If any of the three private Docker configuration values of key name, auth, or Docker token are missing, Cromwell will not perform a `docker login`. If the 
-Docker image to be pulled is not public the `docker pull` will fail and will cause the entire job to fail.
+Docker image to be pulled is not public the `docker pull` will fail which will cause the overall job to fail.
+
+If using either the `user_service_account_json` or `docker_credentials_key_name` workflow options it is advisable to add
+these to the `workflow-options.encrypted-fields` list in Cromwell configuration.
  
 
 **Monitoring**
