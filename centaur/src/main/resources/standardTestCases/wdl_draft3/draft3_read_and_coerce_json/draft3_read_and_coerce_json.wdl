@@ -21,7 +21,7 @@ workflow draft3_read_and_coerce_json {
   call read_write_all { input: my_foo = my_foo }
 
   output {
-    String from_coerced_map = read_write_all.coerced_to_map.field2["field1"]
+    String from_coerced_map = read_write_all.coerced_to_map["field2"]["field1"]
     String from_coerced_foo = read_write_all.coerced_to_foo.field2["field2"]
   }
 }
