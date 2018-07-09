@@ -510,7 +510,7 @@ task IndelsVariantRecalibrator {
       -tranche ${sep=' -tranche ' recalibration_tranche_values} \
       -an ${sep=' -an ' recalibration_annotation_values} \
       -mode INDEL \
-      --max-gaussians 4 \
+      --max-gaussians 3 \
       -resource mills,known=false,training=true,truth=true,prior=12:${mills_resource_vcf} \
       -resource axiomPoly,known=false,training=true,truth=false,prior=10:${axiomPoly_resource_vcf} \
       -resource dbsnp,known=true,training=false,truth=false,prior=2:${dbsnp_resource_vcf}
