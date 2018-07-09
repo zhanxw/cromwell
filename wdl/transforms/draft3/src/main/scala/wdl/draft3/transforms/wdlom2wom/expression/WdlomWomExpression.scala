@@ -1,6 +1,5 @@
 package wdl.draft3.transforms.wdlom2wom.expression
 
-import common.validation.ErrorOr.ErrorOr
 import common.validation.ErrorOr._
 import wdl.draft3.transforms.linking.expression.consumed._
 import wdl.draft3.transforms.linking.expression.files._
