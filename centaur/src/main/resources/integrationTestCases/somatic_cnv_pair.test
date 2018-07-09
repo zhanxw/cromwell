@@ -1,6 +1,7 @@
 # NOTE: When changing Somatic/cnv_common_tasks.wdl you must update _all_ tests that use the shared file
 name: cnv_somatic_pair
 testFormat: workflowsuccess
+ignore: true
 
 files {
   workflow: Somatic/CNV-Pair/cnv_somatic_pair_workflow.wdl

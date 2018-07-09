@@ -1,5 +1,6 @@
 name: SmartSeq2SingleSample
 testFormat: workflowsuccess
+ignore: true
 
 files {
   workflow: hca/SmartSeq2SingleSample/SmartSeq2SingleSample.wdl

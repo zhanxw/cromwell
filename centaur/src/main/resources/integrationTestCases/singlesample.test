@@ -1,5 +1,6 @@
 name: singlesample
 testFormat: workflowsuccess
+ignore: true
 
 files {
   workflow: germline/single-sample-workflow/processing-for-variant-discovery-gatk4.wdl
