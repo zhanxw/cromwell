@@ -193,7 +193,7 @@ object EngineFunctionEvaluators {
 
   implicit val sizeFunctionEvaluator: TypeEvaluator[Size] = new TypeEvaluator[Size] {
     private def suitableSizeType(womType: WomType): Boolean = womType match {
-      case WomSingleFileType => true
+      case t if WomSingleFileType.isCoerceableFrom(t) => true
       case WomOptionalType(inner) => suitableSizeType(inner)
       case WomArrayType(inner) => suitableSizeType(inner)
       case _ => false
