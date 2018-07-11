@@ -1,6 +1,6 @@
-package cromwell.docker
+package cromwell.docker.registryv2.flows.dockerhub
 
-object DockerUtil {
+object DockerHub {
   val DockerHubDefaultRegistry = "index.docker.io"
   val RegistryHostName = "registry-1.docker.io"
   val AuthorizationServerHostName = "auth.docker.io"

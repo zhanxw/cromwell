@@ -4,7 +4,7 @@ import akka.actor.Scheduler
 import akka.http.scaladsl.model.headers.{Authorization, BasicHttpCredentials}
 import akka.stream.ActorMaterializer
 import cromwell.core.DockerCredentials
-import cromwell.docker.DockerUtil._
+import DockerHub._
 import cromwell.docker.DockerHashActor.DockerHashContext
 import cromwell.docker.DockerImageIdentifierWithoutHash
 import cromwell.docker.registryv2.DockerRegistryV2AbstractFlow
