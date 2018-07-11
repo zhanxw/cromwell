@@ -115,7 +115,6 @@ class JobPreparationActor(workflowDescriptor: EngineWorkflowDescriptor,
   private def fetchDockerHashesIfNecessary(inputs: WomEvaluatedCallInputs, attributes: Map[LocallyQualifiedName, WomValue]) = {
     def sendDockerRequest(dockerImageId: DockerImageIdentifierWithoutHash) = {
       val dockerHashRequest = DockerHashRequest(dockerImageId, dockerHashCredentials)
-      System.err.println(s"DEBUGDHR dockerHashRequest = $dockerHashRequest")
       val newData = JobPreparationDockerLookupData(dockerHashRequest, inputs, attributes)
       workflowDockerLookupActor ! dockerHashRequest
       goto(WaitingForDockerHash) using newData
