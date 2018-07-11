@@ -57,7 +57,12 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
     optionsEncryptionKey.orElse(pipelinesConfiguration.dockerEncryptionKeyName)
   }
 
-  val privateDockerEncryptedToken: Option[String] = {
+  val privateDockerToken: Option[String] = {
+    val optionsDockerToken = workflowOptions.get(GoogleAuthMode.DockerCredentialsTokenKey).toOption
+    optionsDockerToken.orElse(pipelinesConfiguration.dockerToken)
+  }
+
+  lazy val privateDockerEncryptedToken: Option[String] = {
     val effectiveAuth: Option[GoogleAuthMode] = {
       // Roll with the user service account if a user service account value is provided in the workflow options and there's
       // a user service account auth in the list of auths.
@@ -68,15 +73,15 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
         usaAuth <- pipelinesConfiguration.googleConfig.authsByName.values collectFirst { case u: UserServiceAccountMode => u }
       } yield usaAuth
 
-      // If there's no user service account auth fall back to an auth specified in config.
       def encryptionAuthFromConfig: Option[GoogleAuthMode] = pipelinesConfiguration.dockerEncryptionAuthName.flatMap { name =>
         pipelinesConfiguration.googleConfig.auth(name).toOption
       }
+      // If there's no user service account auth in the workflow options fall back to an auth specified in config.
       userServiceAccountAuth orElse encryptionAuthFromConfig
     }
 
-    val unencrypted: Option[String] = pipelinesConfiguration.dockerCredentials.flatMap { dockerCreds =>
-      new String(Base64.decodeBase64(dockerCreds.token)).split(':') match {
+    val unencrypted: Option[String] = privateDockerToken flatMap { dockerToken =>
+      new String(Base64.decodeBase64(dockerToken)).split(':') match {
         case Array(username, password) =>
           // unencrypted tokens are base64-encoded username:password
           Option(JsObject(
@@ -84,7 +89,7 @@ class PipelinesApiInitializationActor(pipelinesParams: PipelinesApiInitializatio
               "username" -> JsString(username),
               "password" -> JsString(password)
             )).compactPrint)
-        case _ => throw new RuntimeException(s"provided dockerhub token '${dockerCreds.token}' is not a base64-encoded username:password")
+        case _ => throw new RuntimeException(s"provided dockerhub token '$dockerToken' is not a base64-encoded username:password")
       }
     }
 

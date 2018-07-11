@@ -52,7 +52,7 @@ class JobPreparationActor(workflowDescriptor: EngineWorkflowDescriptor,
   private[preparation] val ioEc = context.system.dispatchers.lookup(Dispatcher.IoDispatcher)
 
   private[preparation] lazy val expressionLanguageFunctions = factory.expressionLanguageFunctions(workflowDescriptor.backendDescriptor, jobKey, initializationData, ioActor, ioEc)
-  private[preparation] lazy val dockerHashCredentials = factory.dockerHashCredentials(initializationData)
+  private[preparation] lazy val dockerHashCredentials = factory.dockerHashCredentials(workflowDescriptor.backendDescriptor, initializationData)
   private[preparation] lazy val runtimeAttributeDefinitions = factory.runtimeAttributeDefinitions(initializationData)
   private[preparation] lazy val hasDockerDefinition = runtimeAttributeDefinitions.exists(_.name == DockerValidation.instance.key)
 
@@ -115,6 +115,7 @@ class JobPreparationActor(workflowDescriptor: EngineWorkflowDescriptor,
   private def fetchDockerHashesIfNecessary(inputs: WomEvaluatedCallInputs, attributes: Map[LocallyQualifiedName, WomValue]) = {
     def sendDockerRequest(dockerImageId: DockerImageIdentifierWithoutHash) = {
       val dockerHashRequest = DockerHashRequest(dockerImageId, dockerHashCredentials)
+      System.err.println(s"DEBUGDHR dockerHashRequest = $dockerHashRequest")
       val newData = JobPreparationDockerLookupData(dockerHashRequest, inputs, attributes)
       workflowDockerLookupActor ! dockerHashRequest
       goto(WaitingForDockerHash) using newData

@@ -3,11 +3,13 @@ package cromwell.backend.google.pipelines.common
 import akka.actor.{ActorRef, Props}
 import cromwell.backend._
 import cromwell.backend.google.pipelines.common.PipelinesApiBackendLifecycleActorFactory._
+import cromwell.backend.google.pipelines.common.authentication.PipelinesApiDockerCredentials
 import cromwell.backend.google.pipelines.common.callcaching.{PipelinesApiBackendCacheHitCopyingActor, PipelinesApiBackendFileHashingActor}
 import cromwell.backend.standard._
 import cromwell.backend.standard.callcaching.{StandardCacheHitCopyingActor, StandardFileHashingActor}
 import cromwell.cloudsupport.gcp.GoogleConfiguration
-import cromwell.core.CallOutputs
+import cromwell.cloudsupport.gcp.auth.GoogleAuthMode
+import cromwell.core.{CallOutputs, DockerCredentials}
 import wom.graph.CommandCallNode
 
 import scala.util.{Success, Try}
@@ -58,12 +60,20 @@ abstract class PipelinesApiBackendLifecycleActorFactory(override val name: Strin
 
   override lazy val fileHashingActorClassOption: Option[Class[_ <: StandardFileHashingActor]] = Option(classOf[PipelinesApiBackendFileHashingActor])
 
-  override def dockerHashCredentials(initializationData: Option[BackendInitializationData]) = {
+  override def dockerHashCredentials(workflowDescriptor: BackendWorkflowDescriptor, initializationData: Option[BackendInitializationData]) = {
     Try(BackendInitializationData.as[PipelinesApiBackendInitializationData](initializationData)) match {
       case Success(papiData) =>
-        val maybeDockerHubCredentials = papiData.papiConfiguration.dockerCredentials
+        val tokenFromWorkflowOptions = workflowDescriptor.workflowOptions.get(GoogleAuthMode.DockerCredentialsTokenKey).toOption
+        val effectiveToken = tokenFromWorkflowOptions.orElse(papiData.papiConfiguration.dockerCredentials map { _.token })
+
+        val dockerCredentials: Option[PipelinesApiDockerCredentials] = effectiveToken map { token =>
+          // These credentials are being returned for hashing and all that matters in this context is the token
+          // so just `None` the auth and key.
+          val baseDockerCredentials = new DockerCredentials(token = token, authName = None, keyName = None)
+          PipelinesApiDockerCredentials.apply(baseDockerCredentials, googleConfig)
+        }
         val googleCredentials = Option(papiData.gcsCredentials)
-        List(maybeDockerHubCredentials, googleCredentials).flatten
+        List(dockerCredentials, googleCredentials).flatten
       case _ => List.empty[Any]
     }
   }
